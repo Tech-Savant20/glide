@@ -16,6 +16,7 @@ dependencies = [
  "glide-win",
  "serde",
  "toml",
+ "windows",
 ]
 
 [[package]]

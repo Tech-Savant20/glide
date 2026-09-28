@@ -52,13 +52,18 @@ const GAMES: &[&str] = &[
     "RobloxPlayerBeta.exe",
 ];
 
+fn built_in() -> impl Iterator<Item = &'static str> {
+    NATIVE_SMOOTH.iter().chain(WHOLE_NOTCH).chain(GAMES).copied()
+}
+
 /// The built-in list plus the user's additions.
 pub fn excluded(user: &[String]) -> Vec<String> {
-    NATIVE_SMOOTH
-        .iter()
-        .chain(WHOLE_NOTCH)
-        .chain(GAMES)
-        .map(|s| s.to_string())
+    built_in()
+        .map(str::to_owned)
         .chain(user.iter().cloned())
         .collect()
+}
+
+pub fn is_built_in(exe: &str) -> bool {
+    built_in().any(|b| b.eq_ignore_ascii_case(exe))
 }

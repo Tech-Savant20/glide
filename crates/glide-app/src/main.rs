@@ -1,110 +1,132 @@
-//! Prototype: smooths the mouse wheel until Enter is pressed, reloading
-//! `%APPDATA%\Glide\config.toml` whenever it is saved and pausing while exam
-//! software or anti-cheat games run.
+//! Glide: Mac-style smooth scrolling for Windows.
+//!
+//! Runs in the background with a tray icon. `glide --debug`, run from a terminal,
+//! also prints what it's doing there.
+
+#![windows_subsystem = "windows"]
 
 mod apps;
+mod autostart;
 mod config;
+mod hotkey;
+mod icon;
+mod log;
 mod pause;
+mod tray;
 
-use std::thread;
-use std::time::{Duration, Instant};
+use std::sync::Mutex;
+use std::time::Instant;
 
-use glide_win::{Skip, Smoother};
+use glide_win::Smoother;
+use log::log;
+use windows::core::{w, HSTRING};
+use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
+use windows::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};
+use windows::Win32::System::Threading::CreateMutexW;
+use windows::Win32::UI::HiDpi::{
+    SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+};
+use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
 
-/// How often to look for exam software and anti-cheat games.
-const PAUSE_CHECK: Duration = Duration::from_secs(2);
+/// Everything the tray thread and the watcher thread share.
+pub struct Shared {
+    pub smoother: Smoother,
+    pub state: Mutex<State>,
+    pub config_path: std::path::PathBuf,
+    pub debug: bool,
+}
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let path = config::path();
-    let config = config::load_or_create(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+pub struct State {
+    pub config: config::Config,
+    /// The user's on/off switch (tray click or hotkey).
+    pub enabled: bool,
+    /// "Pause for 1 hour" ends at this time.
+    pub paused_until: Option<Instant>,
+    /// An exam app or anti-cheat game that is running, which pauses Glide.
+    pub blocked_by: Option<String>,
+    /// The app the user was last working in, for "Normal scrolling in …".
+    pub last_app: Option<String>,
+}
 
-    let smoother = Smoother::start(config.params(), config.options())?;
-    smoother.set_excluded_apps(&apps::excluded(&config.excluded_apps));
-    println!("Glide is smoothing your mouse wheel. Press Enter to quit.");
-    println!("Settings: {}", path.display());
-    println!("  {}", config.summary());
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Status {
+    On,
+    Off,
+    PausedMinutes(u64),
+    Blocked(String),
+}
 
-    thread::scope(|scope| {
-        let smoother = &smoother;
-        let path = &path;
-        scope.spawn(move || {
-            let mut config = config;
-            let mut seen = config::modified(path).ok();
-            let mut paused_for: Option<String> = None;
-            let mut last_pause_check = Instant::now() - PAUSE_CHECK;
-            let mut last_skip = None;
-            loop {
-                let now = config::modified(path).ok();
-                if now != seen {
-                    seen = now;
-                    match config::load(path) {
-                        Ok(fresh) => {
-                            smoother.set_params(fresh.params());
-                            smoother.set_options(fresh.options());
-                            smoother.set_excluded_apps(&apps::excluded(&fresh.excluded_apps));
-                            println!("Reloaded: {}", fresh.summary());
-                            config = fresh;
-                            last_pause_check = Instant::now() - PAUSE_CHECK;
-                        }
-                        Err(e) => println!("Couldn't read settings, keeping the old ones: {e}"),
-                    }
-                }
-
-                if last_pause_check.elapsed() >= PAUSE_CHECK {
-                    last_pause_check = Instant::now();
-                    let blocker = if config.pause_during_exams || config.pause_during_anti_cheat_games {
-                        glide_win::running_process_names().ok().and_then(|running| {
-                            let exam = config
-                                .pause_during_exams
-                                .then(|| pause::find_running(&running, pause::EXAM_APPS, &config.exam_apps))
-                                .flatten();
-                            let game = config
-                                .pause_during_anti_cheat_games
-                                .then(|| pause::find_running(&running, pause::ANTI_CHEAT_GAMES, &[]))
-                                .flatten();
-                            exam.or(game).map(String::from)
-                        })
-                    } else {
-                        None
-                    };
-                    match (&paused_for, blocker) {
-                        (None, Some(app)) => {
-                            smoother.suspend();
-                            println!("Paused: {app} is running. Glide has stopped reading your mouse.");
-                            paused_for = Some(app);
-                        }
-                        (Some(app), None) => {
-                            match smoother.resume() {
-                                Ok(()) => println!("Resumed: {app} has closed."),
-                                Err(e) => println!("Couldn't resume after {app} closed: {e}"),
-                            }
-                            paused_for = None;
-                        }
-                        _ => {}
-                    }
-                }
-
-                // Say when the window under the cursor switches between smoothed and
-                // raw, so it's clear why an app scrolls the way it does.
-                if !smoother.is_suspended() {
-                    let skip = smoother.skip_reason_under_cursor();
-                    if skip != last_skip {
-                        match skip {
-                            None => println!("Here: smoothing."),
-                            Some(Skip::Excluded) => println!("Here: normal scrolling (app is on the exclusion list)."),
-                            Some(Skip::Elevated) => println!("Here: normal scrolling (admin window; Windows blocks Glide there)."),
-                            Some(Skip::FullscreenGame) => println!("Here: normal scrolling (fullscreen game)."),
-                            Some(Skip::Wpf) => println!("Here: normal scrolling (WPF app; it would over-scroll)."),
-                        }
-                        last_skip = skip;
-                    }
-                }
-
-                thread::sleep(Duration::from_millis(300));
+impl State {
+    pub fn status(&self) -> Status {
+        if let Some(app) = &self.blocked_by {
+            return Status::Blocked(app.clone());
+        }
+        if !self.enabled {
+            return Status::Off;
+        }
+        match self.paused_until {
+            Some(until) => {
+                let left = until.saturating_duration_since(Instant::now()).as_secs();
+                Status::PausedMinutes(left.div_ceil(60).max(1))
             }
-        });
+            None => Status::On,
+        }
+    }
+}
 
-        let _ = std::io::stdin().read_line(&mut String::new());
-        std::process::exit(0);
-    })
+fn fatal(message: &str) -> ! {
+    log!("Can't start: {message}");
+    unsafe {
+        MessageBoxW(None, &HSTRING::from(message), w!("Glide"), MB_OK | MB_ICONERROR);
+    }
+    std::process::exit(1);
+}
+
+fn main() {
+    let debug = std::env::args().any(|a| a == "--debug");
+    unsafe {
+        if debug {
+            // Show output in the terminal that started us.
+            let _ = AttachConsole(ATTACH_PARENT_PROCESS);
+        }
+        // Real pixel sizes for the tray icon, and screen coordinates that match
+        // the mouse hook's on scaled displays.
+        let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    }
+    log::init();
+
+    // One Glide at a time: two would smooth every scroll twice.
+    let _instance = unsafe { CreateMutexW(None, true, w!("Local\\Glide.SingleInstance")) };
+    if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
+        log!("Glide is already running.");
+        return;
+    }
+
+    let config_path = config::path();
+    let config = config::load_or_create(&config_path)
+        .unwrap_or_else(|e| fatal(&format!("couldn't read {}:\n{e}", config_path.display())));
+
+    let smoother = Smoother::start(config.params(), config.options())
+        .unwrap_or_else(|e| fatal(&format!("couldn't install the mouse hook: {e}")));
+    smoother.set_excluded_apps(&apps::excluded(&config.excluded_apps));
+    log!("Started. {}", config.summary());
+
+    let shared = std::sync::Arc::new(Shared {
+        smoother,
+        state: Mutex::new(State {
+            config,
+            enabled: true,
+            paused_until: None,
+            blocked_by: None,
+            last_app: None,
+        }),
+        config_path,
+        debug,
+    });
+    if let Err(e) = tray::run(shared.clone()) {
+        fatal(&format!("couldn't create the tray icon: {e}"));
+    }
+    shared.smoother.suspend();
+    log!("Quit.");
+    std::process::exit(0);
 }

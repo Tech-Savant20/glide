@@ -26,6 +26,8 @@ pub struct Config {
     pub pause_during_anti_cheat_games: bool,
     /// Extra apps (like `game.exe`) that always get raw wheel events.
     pub excluded_apps: Vec<String>,
+    /// Optional global shortcut, like `Ctrl+Alt+G`, that turns Glide on and off.
+    pub toggle_hotkey: Option<String>,
     pub tuning: Tuning,
 }
 
@@ -39,6 +41,7 @@ impl Default for Config {
             exam_apps: Vec::new(),
             pause_during_anti_cheat_games: true,
             excluded_apps: Vec::new(),
+            toggle_hotkey: None,
             tuning: Tuning::default(),
         }
     }
@@ -166,6 +169,35 @@ pub fn modified(path: &Path) -> io::Result<SystemTime> {
     fs::metadata(path)?.modified()
 }
 
+/// Rewrites just the `excluded_apps` setting, keeping the rest of the file
+/// (comments included) as the user left it.
+pub fn write_excluded_apps(path: &Path, apps: &[String]) -> io::Result<()> {
+    let text = fs::read_to_string(path)?;
+    fs::write(path, with_excluded_apps(&text, apps))
+}
+
+fn with_excluded_apps(text: &str, apps: &[String]) -> String {
+    let quoted: Vec<String> = apps
+        .iter()
+        .map(|a| format!("\"{}\"", a.replace('\\', "\\\\").replace('"', "\\\"")))
+        .collect();
+    let setting = format!("excluded_apps = [{}]", quoted.join(", "));
+    let mut lines: Vec<String> = text.lines().map(str::to_owned).collect();
+    let starts = |prefix: &str| lines.iter().position(|l| l.trim_start().starts_with(prefix));
+    if let Some(i) = starts("excluded_apps") {
+        lines[i] = setting;
+    } else if let Some(i) = starts("# excluded_apps") {
+        lines.insert(i + 1, setting);
+    } else if let Some(i) = lines.iter().position(|l| l.trim() == "[tuning]") {
+        // Top-level settings must come before the first table.
+        lines.insert(i, String::new());
+        lines.insert(i, setting);
+    } else {
+        lines.insert(0, setting);
+    }
+    lines.join("\n") + "\n"
+}
+
 const DEFAULT_FILE: &str = r##"# Glide settings. Save this file and Glide applies the changes immediately.
 
 # Base feel: "magic-mouse", "trackpad", "subtle" or "snappy".
@@ -195,6 +227,9 @@ pause_during_anti_cheat_games = true
 # apps with their own smooth scrolling (like the new Notepad and Settings), WPF
 # apps, admin windows and fullscreen games; add anything else here.
 # excluded_apps = ["SomeApp.exe"]
+
+# A shortcut that turns Glide on and off from anywhere. Off unless set.
+# toggle_hotkey = "Ctrl+Alt+G"
 
 # Fine-tuning. Remove the leading "# " from a line to override the preset.
 # The values shown are the magic-mouse preset.
@@ -264,6 +299,25 @@ mod tests {
         let off: Config = toml::from_str("pause_during_exams = false").unwrap();
         assert!(!off.pause_during_exams);
         assert!(Config::default().pause_during_anti_cheat_games);
+    }
+
+    #[test]
+    fn excluded_apps_can_be_rewritten_without_losing_the_rest() {
+        let apps = vec!["Foo.exe".to_string(), "Bar Baz.exe".to_string()];
+        let once = with_excluded_apps(DEFAULT_FILE, &apps);
+        let config: Config = toml::from_str(&once).unwrap();
+        assert_eq!(config.excluded_apps, apps);
+        assert!(once.contains("# glide_ms = 250"), "comments kept");
+
+        let twice = with_excluded_apps(&once, &apps[..1]);
+        let config: Config = toml::from_str(&twice).unwrap();
+        assert_eq!(config.excluded_apps, &apps[..1]);
+        let settings = twice.lines().filter(|l| l.starts_with("excluded_apps")).count();
+        assert_eq!(settings, 1, "{twice}");
+
+        let bare = with_excluded_apps("[tuning]\nglide_ms = 200\n", &apps);
+        let config: Config = toml::from_str(&bare).unwrap();
+        assert_eq!(config.excluded_apps, apps);
     }
 
     #[test]
