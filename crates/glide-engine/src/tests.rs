@@ -138,24 +138,23 @@ fn stop_clears_everything() {
 fn acceleration_increases_with_notch_rate() {
     let params = Preset::MagicMouse.params();
     let window = params.acceleration_window;
-    let impulse = |gap: f64| {
+    // Total distance of two notches `gap` apart.
+    let distance = |gap: f64| {
         let mut p = params.clone();
         p.momentum = false;
         let mut e = Engine::new(p);
         e.on_notch(Axis::Vertical, 1.0, 0.0);
-        let first = e.velocity(Axis::Vertical);
         e.on_notch(Axis::Vertical, 1.0, gap);
-        e.velocity(Axis::Vertical) - first
+        run_out(&mut e, FRAME).0[0]
     };
 
-    let base = NOTCH * params.ease_friction;
-    assert_eq!(impulse(window * 2.0), base);
-    assert_eq!(impulse(window), base);
+    assert_eq!(distance(window * 2.0), 240);
+    assert_eq!(distance(window), 240);
 
     let gaps = [0.1, 0.08, 0.05, 0.02, 0.005];
-    let impulses: Vec<f64> = gaps.iter().map(|&g| impulse(g)).collect();
-    assert!(impulses.windows(2).all(|w| w[1] > w[0]), "{impulses:?}");
-    assert!(impulses[4] <= base * (1.0 + params.acceleration));
+    let distances: Vec<i64> = gaps.iter().map(|&g| distance(g)).collect();
+    assert!(distances.windows(2).all(|w| w[1] > w[0]), "{distances:?}");
+    assert!(distances[4] as f64 <= 120.0 * (2.0 + params.acceleration));
 }
 
 #[test]
@@ -164,7 +163,71 @@ fn velocity_is_capped() {
     let cap = params.max_velocity;
     let mut e = Engine::new(params);
     flick(&mut e, 200, 0.001);
-    assert_eq!(e.velocity(Axis::Vertical), -cap);
+    while e.is_active() {
+        e.tick(FRAME);
+        assert!(e.velocity(Axis::Vertical).abs() <= cap);
+    }
+}
+
+/// Rolls the wheel at a steady `gap` for `notches` notches with frames of `dt`, the
+/// way input really interleaves: notches land between frames. Returns every
+/// frame's output and the frame index of the last notch.
+fn roll(params: Params, notches: u32, gap: f64, dt: f64) -> (Vec<i32>, usize) {
+    let mut e = Engine::new(params);
+    let mut out = Vec::new();
+    let mut t = 0.0;
+    let mut sent = 0;
+    let mut last_notch_frame = 0;
+    while sent < notches || e.is_active() {
+        while sent < notches && sent as f64 * gap <= t {
+            e.on_notch(Axis::Vertical, -1.0, sent as f64 * gap);
+            sent += 1;
+            last_notch_frame = out.len();
+        }
+        out.push(-e.tick(dt)[0]);
+        t += dt;
+    }
+    (out, last_notch_frame)
+}
+
+#[test]
+fn steady_rolling_moves_at_a_steady_speed() {
+    let mut params = Preset::MagicMouse.params();
+    params.acceleration = 0.0;
+    // About 5.5 notches a second: the speed from the Scroll Lab report that showed
+    // a sawtooth under the old per-notch model.
+    let gap = 0.183;
+    let (out, last) = roll(params, 12, gap, 1.0 / 60.0);
+
+    let steady = &out[(4.0 * gap * 60.0) as usize..last];
+    let expected = 120.0 / gap / 60.0;
+    for &px in steady {
+        let error = (px as f64 - expected).abs() / expected;
+        assert!(error < 0.15, "frame moved {px}, expected ~{expected:.1}: {steady:?}");
+    }
+}
+
+#[test]
+fn rolling_eases_out_without_a_jump() {
+    let mut params = Preset::MagicMouse.params();
+    params.acceleration = 0.0;
+    let (out, last) = roll(params, 8, 0.12, 1.0 / 60.0);
+    let tail = &out[last..];
+    // After the last notch the speed only ever falls, and it ends gently.
+    assert!(tail.windows(2).all(|w| w[1] <= w[0] + 1), "{tail:?}");
+    assert!(*tail.last().unwrap() <= 3, "{tail:?}");
+    assert_eq!(out.iter().map(|&v| v as i64).sum::<i64>(), 8 * 120);
+}
+
+#[test]
+fn rolling_totals_are_exact_at_any_frame_rate() {
+    let mut params = Preset::Trackpad.params();
+    params.momentum = false;
+    params.acceleration = 0.0;
+    for dt in [1.0 / 60.0, 1.0 / 144.0, 1.0 / 240.0] {
+        let (out, _) = roll(params.clone(), 9, 0.07, dt);
+        assert_eq!(out.iter().map(|&v| v as i64).sum::<i64>(), 9 * 120, "dt {dt}");
+    }
 }
 
 #[test]

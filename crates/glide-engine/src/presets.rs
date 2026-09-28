@@ -27,6 +27,7 @@ impl Preset {
             Preset::MagicMouse => Params {
                 step: NOTCH,
                 ease_friction: 12.0,
+                roll_gap: 0.25,
                 momentum: true,
                 momentum_friction: apple_normal,
                 fling_interval: 0.045,
@@ -39,6 +40,7 @@ impl Preset {
             Preset::Trackpad => Params {
                 step: NOTCH,
                 ease_friction: 9.0,
+                roll_gap: 0.3,
                 momentum: true,
                 momentum_friction: apple_normal,
                 fling_interval: 0.06,
@@ -51,6 +53,7 @@ impl Preset {
             Preset::Subtle => Params {
                 step: NOTCH,
                 ease_friction: 18.0,
+                roll_gap: 0.2,
                 momentum: false,
                 momentum_friction: apple_normal,
                 fling_interval: 0.045,
@@ -63,6 +66,7 @@ impl Preset {
             Preset::Snappy => Params {
                 step: NOTCH,
                 ease_friction: 24.0,
+                roll_gap: 0.15,
                 momentum: true,
                 momentum_friction: friction_from_per_ms(APPLE_DECELERATION_FAST),
                 fling_interval: 0.04,
