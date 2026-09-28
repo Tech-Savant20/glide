@@ -12,6 +12,7 @@ mod animator;
 mod hook;
 mod inject;
 mod processes;
+mod target;
 
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::mpsc::{self, Sender};
@@ -22,6 +23,7 @@ use glide_engine::{Axis, Params};
 
 pub use hook::Options;
 pub use processes::running_process_names;
+pub use target::Skip;
 
 /// Messages to the animation thread.
 #[derive(Debug)]
@@ -100,6 +102,19 @@ impl Smoother {
 
     pub fn set_options(&self, options: Options) {
         hook::set_options(options);
+    }
+
+    /// Executable names (like `game.exe`) that always get raw wheel events.
+    pub fn set_excluded_apps(&self, names: &[String]) {
+        target::set_excluded(names);
+    }
+
+    /// Why the window under the mouse cursor would get raw wheel events, or
+    /// `None` if Glide smooths it.
+    pub fn skip_reason_under_cursor(&self) -> Option<Skip> {
+        let mut point = windows::Win32::Foundation::POINT::default();
+        unsafe { windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut point).ok()? };
+        target::skip_reason(point)
     }
 
     pub fn shutdown(self) {

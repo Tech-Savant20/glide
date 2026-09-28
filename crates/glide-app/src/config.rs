@@ -22,6 +22,10 @@ pub struct Config {
     pub pause_during_exams: bool,
     /// Extra process names that count as exam software.
     pub exam_apps: Vec<String>,
+    /// Remove the mouse hook while a game with anti-cheat runs.
+    pub pause_during_anti_cheat_games: bool,
+    /// Extra apps (like `game.exe`) that always get raw wheel events.
+    pub excluded_apps: Vec<String>,
     pub tuning: Tuning,
 }
 
@@ -33,6 +37,8 @@ impl Default for Config {
             smooth_hires: false,
             pause_during_exams: true,
             exam_apps: Vec::new(),
+            pause_during_anti_cheat_games: true,
+            excluded_apps: Vec::new(),
             tuning: Tuning::default(),
         }
     }
@@ -180,6 +186,16 @@ pause_during_exams = true
 # Other programs that should pause Glide the same way, by process name.
 # exam_apps = ["MyUniversityExam.exe"]
 
+# Also stop Glide completely while a game with anti-cheat runs (VALORANT and
+# League of Legends with Riot Vanguard, and games using Easy Anti-Cheat or
+# BattlEye), so the anti-cheat never sees an input tool running.
+pause_during_anti_cheat_games = true
+
+# Apps that should keep normal, unsmoothed scrolling. Glide already skips games,
+# apps with their own smooth scrolling (like the new Notepad and Settings), WPF
+# apps, admin windows and fullscreen games; add anything else here.
+# excluded_apps = ["SomeApp.exe"]
+
 # Fine-tuning. Remove the leading "# " from a line to override the preset.
 # The values shown are the magic-mouse preset.
 [tuning]
@@ -247,6 +263,7 @@ mod tests {
         assert!(toml::from_str::<Config>("").unwrap().pause_during_exams);
         let off: Config = toml::from_str("pause_during_exams = false").unwrap();
         assert!(!off.pause_during_exams);
+        assert!(Config::default().pause_during_anti_cheat_games);
     }
 
     #[test]

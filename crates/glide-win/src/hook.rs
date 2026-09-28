@@ -17,7 +17,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_RBUTTONDOWN, WM_XBUTTONDOWN,
 };
 
-use crate::Msg;
+use crate::{target, Msg};
 
 pub(crate) static ENABLED: AtomicBool = AtomicBool::new(true);
 static NATURAL: AtomicBool = AtomicBool::new(false);
@@ -135,6 +135,9 @@ fn classify(message: u32, info: &MSLLHOOKSTRUCT) -> Option<Msg> {
             }
             // Ctrl+wheel is zoom almost everywhere; stepped zoom is what users expect.
             if key_down(VK_CONTROL.0) {
+                return None;
+            }
+            if target::skip_reason(info.pt).is_some() {
                 return None;
             }
             let mut axis = if message == WM_MOUSEWHEEL {
