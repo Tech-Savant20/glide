@@ -153,8 +153,13 @@ fn exe_name(process: HANDLE) -> Option<String> {
     let mut buf = [0u16; 1024];
     let mut len = buf.len() as u32;
     unsafe {
-        QueryFullProcessImageNameW(process, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &mut len)
-            .ok()?;
+        QueryFullProcessImageNameW(
+            process,
+            PROCESS_NAME_WIN32,
+            PWSTR(buf.as_mut_ptr()),
+            &mut len,
+        )
+        .ok()?;
     }
     let path = String::from_utf16_lossy(&buf[..len as usize]);
     let name = path.rsplit(['\\', '/']).next()?;

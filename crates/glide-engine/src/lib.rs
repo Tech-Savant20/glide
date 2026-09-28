@@ -95,7 +95,10 @@ enum Phase {
     Idle,
     /// Moving at the finger's speed, estimated from recent notch gaps. `measured`
     /// is false while the gap is still the guessed usual pace.
-    Rolling { gap: f64, measured: bool },
+    Rolling {
+        gap: f64,
+        measured: bool,
+    },
     Gliding,
 }
 
@@ -151,7 +154,11 @@ impl AxisState {
         // Glide: an exponential whose rate is picked so that, from the current
         // velocity, it covers exactly the distance owed. Speed is therefore
         // continuous when rolling hands over.
-        let settle = if self.coast { p.momentum_friction } else { p.ease_friction };
+        let settle = if self.coast {
+            p.momentum_friction
+        } else {
+            p.ease_friction
+        };
         if self.velocity.signum() != dir || self.velocity == 0.0 {
             self.velocity = (self.owed * settle).clamp(-p.max_velocity, p.max_velocity);
         }

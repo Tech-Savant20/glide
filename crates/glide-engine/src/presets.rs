@@ -1,4 +1,6 @@
-use crate::{friction_from_per_ms, Params, APPLE_DECELERATION_FAST, APPLE_DECELERATION_NORMAL, NOTCH};
+use crate::{
+    friction_from_per_ms, Params, APPLE_DECELERATION_FAST, APPLE_DECELERATION_NORMAL, NOTCH,
+};
 
 /// Built-in tunings shown on the settings page.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

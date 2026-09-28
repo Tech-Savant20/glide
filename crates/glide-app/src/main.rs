@@ -78,7 +78,12 @@ impl State {
 fn fatal(message: &str) -> ! {
     log!("Can't start: {message}");
     unsafe {
-        MessageBoxW(None, &HSTRING::from(message), w!("Glide"), MB_OK | MB_ICONERROR);
+        MessageBoxW(
+            None,
+            &HSTRING::from(message),
+            w!("Glide"),
+            MB_OK | MB_ICONERROR,
+        );
     }
     std::process::exit(1);
 }

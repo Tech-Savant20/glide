@@ -53,7 +53,11 @@ const GAMES: &[&str] = &[
 ];
 
 fn built_in() -> impl Iterator<Item = &'static str> {
-    NATIVE_SMOOTH.iter().chain(WHOLE_NOTCH).chain(GAMES).copied()
+    NATIVE_SMOOTH
+        .iter()
+        .chain(WHOLE_NOTCH)
+        .chain(GAMES)
+        .copied()
 }
 
 /// The built-in list plus the user's additions.

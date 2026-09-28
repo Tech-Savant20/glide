@@ -13,7 +13,9 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use glide_engine::{Axis, Engine, Params};
-use slint::{ComponentHandle, ModelRc, SharedString, StandardListViewItem, Timer, TimerMode, VecModel};
+use slint::{
+    ComponentHandle, ModelRc, SharedString, StandardListViewItem, Timer, TimerMode, VecModel,
+};
 use windows::core::{w, HSTRING};
 use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
 use windows::Win32::System::Threading::CreateMutexW;
@@ -63,7 +65,9 @@ pub fn run() -> Result<(), slint::PlatformError> {
         Ok(config) => (config, None),
         Err(e) => (
             Config::default(),
-            Some(format!("Your settings file has a mistake ({e}). Changing anything here replaces it.")),
+            Some(format!(
+                "Your settings file has a mistake ({e}). Changing anything here replaces it."
+            )),
         ),
     };
 
@@ -89,7 +93,12 @@ pub fn run() -> Result<(), slint::PlatformError> {
     );
     refresh_running(&editor);
     show(&ui, &editor.borrow());
-    let hotkey_text = editor.borrow().config.toggle_hotkey.clone().unwrap_or_default();
+    let hotkey_text = editor
+        .borrow()
+        .config
+        .toggle_hotkey
+        .clone()
+        .unwrap_or_default();
     ui.set_hotkey(hotkey_text.clone().into());
     ui.set_hotkey_status(hotkey_status(&hotkey_text).1.into());
     ui.set_status(problem.unwrap_or_default().into());
@@ -168,7 +177,9 @@ pub fn run() -> Result<(), slint::PlatformError> {
     let ed = editor.clone();
     let ui_weak = ui.as_weak();
     ui.on_add_running(move |i| {
-        let Some(app) = ed.borrow().running.get(i.max(0) as usize).cloned() else { return };
+        let Some(app) = ed.borrow().running.get(i.max(0) as usize).cloned() else {
+            return;
+        };
         e(&|c: &mut Config| {
             if !c.excluded_apps.iter().any(|x| x.eq_ignore_ascii_case(&app)) {
                 c.excluded_apps.push(app.clone());
@@ -215,7 +226,12 @@ pub fn run() -> Result<(), slint::PlatformError> {
         if let Some(ui) = ui_weak.upgrade() {
             match result {
                 Ok(()) => ui.set_status(
-                    if on { "Glide will start when you sign in." } else { "Glide won't start by itself." }.into(),
+                    if on {
+                        "Glide will start when you sign in."
+                    } else {
+                        "Glide won't start by itself."
+                    }
+                    .into(),
                 ),
                 Err(e) => {
                     ui.set_autostart(autostart::is_enabled());
@@ -232,7 +248,11 @@ pub fn run() -> Result<(), slint::PlatformError> {
 
     // `--tab apps` or `--tab general` opens on that tab.
     let args: Vec<String> = std::env::args().collect();
-    if let Some(name) = args.iter().position(|a| a == "--tab").and_then(|i| args.get(i + 1)) {
+    if let Some(name) = args
+        .iter()
+        .position(|a| a == "--tab")
+        .and_then(|i| args.get(i + 1))
+    {
         ui.set_tab(match name.as_str() {
             "apps" => 1,
             "general" => 2,
@@ -273,7 +293,10 @@ fn refresh_running(editor: &Rc<RefCell<Editor>>) {
 fn show(ui: &SettingsWindow, editor: &Editor) {
     let config = &editor.config;
     let knobs = config.knobs();
-    let index = PresetName::ALL.iter().position(|p| *p == config.preset).unwrap_or(0);
+    let index = PresetName::ALL
+        .iter()
+        .position(|p| *p == config.preset)
+        .unwrap_or(0);
     ui.set_preset_index(index as i32);
     ui.set_natural(config.natural);
     ui.set_momentum(knobs.momentum);
@@ -335,7 +358,11 @@ fn curves(params: &Params) -> (String, String) {
         let n = speeds.len().max(2) as f64 - 1.0;
         let mut d = String::from("M 0 100");
         for (i, v) in speeds.iter().enumerate() {
-            d.push_str(&format!(" L {:.1} {:.1}", i as f64 / n * 1000.0, 100.0 - v / top * 95.0));
+            d.push_str(&format!(
+                " L {:.1} {:.1}",
+                i as f64 / n * 1000.0,
+                100.0 - v / top * 95.0
+            ));
         }
         d
     };
@@ -357,7 +384,14 @@ fn open_in_notepad(path: &std::path::Path) {
 
 fn open_url(url: &str) {
     unsafe {
-        ShellExecuteW(None, w!("open"), &HSTRING::from(url), None, None, SW_SHOWNORMAL);
+        ShellExecuteW(
+            None,
+            w!("open"),
+            &HSTRING::from(url),
+            None,
+            None,
+            SW_SHOWNORMAL,
+        );
     }
 }
 
@@ -395,7 +429,10 @@ mod tests {
     #[test]
     fn hotkey_status_only_saves_valid_shortcuts() {
         assert_eq!(hotkey_status("").0, Some(None));
-        assert_eq!(hotkey_status(" Ctrl+Alt+G ").0, Some(Some("Ctrl+Alt+G".into())));
+        assert_eq!(
+            hotkey_status(" Ctrl+Alt+G ").0,
+            Some(Some("Ctrl+Alt+G".into()))
+        );
         assert_eq!(hotkey_status("G").0, None);
     }
 }

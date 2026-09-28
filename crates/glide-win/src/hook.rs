@@ -83,8 +83,9 @@ fn run(ready: Sender<windows::core::Result<u32>>) {
     let hook = unsafe {
         // A slow hook callback delays every mouse event on the system.
         let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
-        GetModuleHandleW(None)
-            .and_then(|module| SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_proc), Some(module.into()), 0))
+        GetModuleHandleW(None).and_then(|module| {
+            SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_proc), Some(module.into()), 0)
+        })
     };
     let hook = match hook {
         Ok(hook) => hook,

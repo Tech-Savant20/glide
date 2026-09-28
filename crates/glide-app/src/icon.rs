@@ -3,8 +3,10 @@
 //!
 //! The glyph is a rounded tile holding a mouse wheel with a soft trail below it.
 
-use windows::Win32::Graphics::Gdi::{CreateBitmap, CreateDIBSection, DeleteObject, BITMAPINFO,
-    BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP};
+use windows::Win32::Graphics::Gdi::{
+    CreateBitmap, CreateDIBSection, DeleteObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+    DIB_RGB_COLORS, HBITMAP,
+};
 use windows::Win32::UI::WindowsAndMessaging::{CreateIconIndirect, HICON, ICONINFO};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -38,12 +40,28 @@ pub fn pixels(size: u32, look: Look) -> Vec<u32> {
         for px in 0..size {
             let (x, y) = (px as f64 + 0.5, py as f64 + 0.5);
             let c = s / 2.0;
-            let tile_a = coverage(rounded_rect(x, y, c, c, s / 2.0 - 0.5, s / 2.0 - 0.5, s * 0.24));
+            let tile_a = coverage(rounded_rect(
+                x,
+                y,
+                c,
+                c,
+                s / 2.0 - 0.5,
+                s / 2.0 - 0.5,
+                s * 0.24,
+            ));
             // The wheel: a white capsule, a little above centre.
             let wheel = coverage(rounded_rect(x, y, c, s * 0.42, s * 0.11, s * 0.2, s * 0.11));
             // The trail: a fainter capsule below it, suggesting motion.
             let trail_a = trail
-                * coverage(rounded_rect(x, y, c, s * 0.76, s * 0.07, s * 0.07, s * 0.07));
+                * coverage(rounded_rect(
+                    x,
+                    y,
+                    c,
+                    s * 0.76,
+                    s * 0.07,
+                    s * 0.07,
+                    s * 0.07,
+                ));
             let white = wheel.max(trail_a);
             let rgb: [f64; 3] =
                 std::array::from_fn(|i| tile[i] as f64 * (1.0 - white) + 255.0 * white);

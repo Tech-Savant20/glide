@@ -9,8 +9,8 @@ use windows::Win32::Graphics::Gdi::{EnumDisplaySettingsW, DEVMODEW, ENUM_CURRENT
 use windows::Win32::System::Performance::QueryPerformanceFrequency;
 use windows::Win32::System::Threading::{
     CreateWaitableTimerExW, GetCurrentThread, SetThreadPriority, SetWaitableTimer,
-    WaitForSingleObject, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, INFINITE,
-    THREAD_PRIORITY_HIGHEST, TIMER_ALL_ACCESS,
+    WaitForSingleObject, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, INFINITE, THREAD_PRIORITY_HIGHEST,
+    TIMER_ALL_ACCESS,
 };
 
 use crate::{inject, Msg};
@@ -240,13 +240,19 @@ mod tests {
         let nominal = pacer.restart();
         let frames: Vec<f64> = (0..240).map(|_| pacer.next_frame()).skip(1).collect();
         let mean = frames.iter().sum::<f64>() / frames.len() as f64;
-        let worst = frames.iter().fold(0.0f64, |w, f| w.max((f - nominal).abs()));
+        let worst = frames
+            .iter()
+            .fold(0.0f64, |w, f| w.max((f - nominal).abs()));
         println!(
             "nominal {:.3} ms, mean {:.3} ms, worst deviation {:.3} ms, vblank pacing {}",
             nominal * 1000.0,
             mean * 1000.0,
             worst * 1000.0,
-            if wait_for_vblank().is_some() { "on" } else { "off" },
+            if wait_for_vblank().is_some() {
+                "on"
+            } else {
+                "off"
+            },
         );
         assert!((mean - nominal).abs() < nominal * 0.1);
     }

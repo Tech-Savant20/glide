@@ -79,7 +79,10 @@ fn flick_coasts_at_apple_deceleration() {
     let before = e.velocity(Axis::Vertical);
     e.tick(0.001);
     let ratio = e.velocity(Axis::Vertical) / before;
-    assert!((ratio - APPLE_DECELERATION_NORMAL).abs() < 1e-9, "ratio {ratio}");
+    assert!(
+        (ratio - APPLE_DECELERATION_NORMAL).abs() < 1e-9,
+        "ratio {ratio}"
+    );
 }
 
 #[test]
@@ -205,7 +208,10 @@ fn steady_rolling_moves_at_a_steady_speed() {
     let expected = 120.0 / gap / 60.0;
     for &px in steady {
         let error = (px as f64 - expected).abs() / expected;
-        assert!(error < 0.15, "frame moved {px}, expected ~{expected:.1}: {steady:?}");
+        assert!(
+            error < 0.15,
+            "frame moved {px}, expected ~{expected:.1}: {steady:?}"
+        );
     }
 }
 
@@ -227,7 +233,10 @@ fn starting_a_roll_does_not_surge_and_sag() {
             "gap {gap}: speed dipped: {rising:?}"
         );
         let steady = 120.0 / gap / 60.0;
-        assert!(rising[0] as f64 >= 0.4 * steady, "gap {gap}: slow start: {rising:?}");
+        assert!(
+            rising[0] as f64 >= 0.4 * steady,
+            "gap {gap}: slow start: {rising:?}"
+        );
     }
 }
 
@@ -350,7 +359,9 @@ fn window_share(t: f64) -> f64 {
 fn ripple_table() {
     let mut params = Preset::MagicMouse.params();
     params.acceleration = 0.0;
-    println!("gap ms | Glide 60 Hz | Glide 144 Hz | Glide ±20% jitter | pulse queue | 200 ms window");
+    println!(
+        "gap ms | Glide 60 Hz | Glide 144 Hz | Glide ±20% jitter | pulse queue | 200 ms window"
+    );
     for gap_ms in (80..=300).step_by(20) {
         let gap = gap_ms as f64 / 1000.0;
         println!(
@@ -371,7 +382,10 @@ fn profile() {
     let mut params = Preset::MagicMouse.params();
     params.acceleration = 0.0;
     for gap in [0.12, 0.183, 0.27] {
-        println!("gap {gap}: {:?}", roll(params.clone(), 6, gap, 1.0 / 60.0).0);
+        println!(
+            "gap {gap}: {:?}",
+            roll(params.clone(), 6, gap, 1.0 / 60.0).0
+        );
     }
     let mut e = Engine::new(params);
     e.on_notch(Axis::Vertical, -1.0, 0.0);
@@ -401,7 +415,11 @@ fn rolling_totals_are_exact_at_any_frame_rate() {
     params.acceleration = 0.0;
     for dt in [1.0 / 60.0, 1.0 / 144.0, 1.0 / 240.0] {
         let (out, _) = roll(params.clone(), 9, 0.07, dt);
-        assert_eq!(out.iter().map(|&v| v as i64).sum::<i64>(), 9 * 120, "dt {dt}");
+        assert_eq!(
+            out.iter().map(|&v| v as i64).sum::<i64>(),
+            9 * 120,
+            "dt {dt}"
+        );
     }
 }
 

@@ -17,17 +17,17 @@ use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, UnregisterHotKey};
 use windows::Win32::UI::Shell::{
-    Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_SHOWTIP, NIF_TIP, NIM_ADD,
-    NIM_DELETE, NIM_MODIFY, NIM_SETVERSION, NIN_SELECT, NOTIFYICONDATAW,
-    NOTIFYICONDATAW_0, NOTIFYICON_VERSION_4,
+    Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_SHOWTIP, NIF_TIP, NIM_ADD, NIM_DELETE,
+    NIM_MODIFY, NIM_SETVERSION, NIN_SELECT, NOTIFYICONDATAW, NOTIFYICONDATAW_0,
+    NOTIFYICON_VERSION_4,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
-    DispatchMessageW, GetMessageW, GetSystemMetrics, PostMessageW, PostQuitMessage,
-    RegisterClassW, RegisterWindowMessageW, SetForegroundWindow, TrackPopupMenu, TranslateMessage,
-    HICON, MENU_ITEM_FLAGS, MF_CHECKED, MF_GRAYED, MF_SEPARATOR, MF_STRING, MSG, SM_CXSMICON,
-    TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WM_APP,
-    WM_CONTEXTMENU, WM_DESTROY, WM_HOTKEY, WM_NULL, WNDCLASSW, WS_OVERLAPPED,
+    DispatchMessageW, GetMessageW, GetSystemMetrics, PostMessageW, PostQuitMessage, RegisterClassW,
+    RegisterWindowMessageW, SetForegroundWindow, TrackPopupMenu, TranslateMessage, HICON,
+    MENU_ITEM_FLAGS, MF_CHECKED, MF_GRAYED, MF_SEPARATOR, MF_STRING, MSG, SM_CXSMICON,
+    TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WM_APP, WM_CONTEXTMENU,
+    WM_DESTROY, WM_HOTKEY, WM_NULL, WNDCLASSW, WS_OVERLAPPED,
 };
 
 use crate::icon::{self, Look};
@@ -190,7 +190,11 @@ fn refresh(hwnd: HWND) {
         let text = describe(&status);
         let mut data = notify_data(hwnd);
         data.uFlags = NIF_ICON | NIF_TIP | NIF_SHOWTIP;
-        data.hIcon = if status == Status::On { ctx.icon_on } else { ctx.icon_off };
+        data.hIcon = if status == Status::On {
+            ctx.icon_on
+        } else {
+            ctx.icon_off
+        };
         let tip: Vec<u16> = format!("Glide\n{text}").encode_utf16().take(127).collect();
         data.szTip[..tip.len()].copy_from_slice(&tip);
         unsafe {
@@ -213,7 +217,9 @@ fn refresh(hwnd: HWND) {
             }
             if let Some(text) = &hotkey_text {
                 match hotkey::parse(text) {
-                    Ok(key) => match unsafe { RegisterHotKey(Some(hwnd), HOTKEY_ID, key.modifiers, key.vk) } {
+                    Ok(key) => match unsafe {
+                        RegisterHotKey(Some(hwnd), HOTKEY_ID, key.modifiers, key.vk)
+                    } {
                         Ok(()) => log!("Hotkey {text} turns Glide on and off."),
                         Err(_) => log!("Hotkey {text} is already used by another app."),
                     },
@@ -232,14 +238,21 @@ fn toggle(shared: &Shared) {
     }
 }
 
-fn add_item(menu: windows::Win32::UI::WindowsAndMessaging::HMENU, flags: MENU_ITEM_FLAGS, id: u32, text: &str) {
+fn add_item(
+    menu: windows::Win32::UI::WindowsAndMessaging::HMENU,
+    flags: MENU_ITEM_FLAGS,
+    id: u32,
+    text: &str,
+) {
     unsafe {
         let _ = AppendMenuW(menu, MF_STRING | flags, id as usize, &HSTRING::from(text));
     }
 }
 
 fn show_menu(hwnd: HWND, at: POINT) {
-    let Some(shared) = with_ctx(|ctx| ctx.shared.clone()) else { return };
+    let Some(shared) = with_ctx(|ctx| ctx.shared.clone()) else {
+        return;
+    };
     let (status, enabled, paused, last_app, excluded) = {
         let state = lock(&shared);
         (
@@ -251,7 +264,9 @@ fn show_menu(hwnd: HWND, at: POINT) {
         )
     };
 
-    let Ok(menu) = (unsafe { CreatePopupMenu() }) else { return };
+    let Ok(menu) = (unsafe { CreatePopupMenu() }) else {
+        return;
+    };
     let none = MENU_ITEM_FLAGS(0);
     add_item(menu, MF_GRAYED, 0, &describe(&status));
     unsafe {
@@ -273,15 +288,29 @@ fn show_menu(hwnd: HWND, at: POINT) {
     }
     if let Some(app) = &last_app {
         if apps::is_built_in(app) {
-            add_item(menu, MF_GRAYED | MF_CHECKED, 0, &format!("Normal scrolling in {app} (built in)"));
+            add_item(
+                menu,
+                MF_GRAYED | MF_CHECKED,
+                0,
+                &format!("Normal scrolling in {app} (built in)"),
+            );
         } else {
             let checked = excluded.iter().any(|e| e.eq_ignore_ascii_case(app));
             let flags = if checked { MF_CHECKED } else { none };
-            add_item(menu, flags, ID_EXCLUDE, &format!("Normal scrolling in {app}"));
+            add_item(
+                menu,
+                flags,
+                ID_EXCLUDE,
+                &format!("Normal scrolling in {app}"),
+            );
         }
     }
     add_item(menu, none, ID_SETTINGS, "Settings…");
-    let auto = if autostart::is_enabled() { MF_CHECKED } else { none };
+    let auto = if autostart::is_enabled() {
+        MF_CHECKED
+    } else {
+        none
+    };
     add_item(menu, auto, ID_AUTOSTART, "Start with Windows");
     unsafe {
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
@@ -354,7 +383,12 @@ fn handle_command(hwnd: HWND, shared: &Shared, command: u32, last_app: Option<St
     refresh(hwnd);
 }
 
-unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+unsafe extern "system" fn wnd_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
     match msg {
         WM_TRAY => {
             // With NOTIFYICON_VERSION_4 the event is in the low word of lparam and
@@ -429,7 +463,9 @@ fn spawn_watcher(shared: Arc<Shared>, hwnd: HWND) {
                         Ok(fresh) => {
                             shared.smoother.set_params(fresh.params());
                             shared.smoother.set_options(fresh.options());
-                            shared.smoother.set_excluded_apps(&apps::excluded(&fresh.excluded_apps));
+                            shared
+                                .smoother
+                                .set_excluded_apps(&apps::excluded(&fresh.excluded_apps));
                             log!("Settings reloaded. {}", fresh.summary());
                             lock(&shared).config = fresh;
                             last_pause_check = Instant::now() - PAUSE_CHECK;
@@ -452,10 +488,14 @@ fn spawn_watcher(shared: Arc<Shared>, hwnd: HWND) {
                     let blocker = if exams || games {
                         glide_win::running_process_names().ok().and_then(|running| {
                             let exam = exams
-                                .then(|| pause::find_running(&running, pause::EXAM_APPS, &exam_apps))
+                                .then(|| {
+                                    pause::find_running(&running, pause::EXAM_APPS, &exam_apps)
+                                })
                                 .flatten();
                             let game = games
-                                .then(|| pause::find_running(&running, pause::ANTI_CHEAT_GAMES, &[]))
+                                .then(|| {
+                                    pause::find_running(&running, pause::ANTI_CHEAT_GAMES, &[])
+                                })
                                 .flatten();
                             exam.or(game).map(String::from)
                         })
@@ -472,7 +512,10 @@ fn spawn_watcher(shared: Arc<Shared>, hwnd: HWND) {
 
                 {
                     let mut state = lock(&shared);
-                    if state.paused_until.is_some_and(|until| Instant::now() >= until) {
+                    if state
+                        .paused_until
+                        .is_some_and(|until| Instant::now() >= until)
+                    {
                         state.paused_until = None;
                         drop(state);
                         post();

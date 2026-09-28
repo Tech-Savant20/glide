@@ -26,7 +26,9 @@ pub fn parse(text: &str) -> Result<Hotkey, String> {
                 if vk.is_some() {
                     return Err(format!("\"{text}\" has more than one key"));
                 }
-                vk = Some(key_code(key).ok_or_else(|| format!("unknown key \"{part}\" in \"{text}\""))?);
+                vk = Some(
+                    key_code(key).ok_or_else(|| format!("unknown key \"{part}\" in \"{text}\""))?,
+                );
                 continue;
             }
         }

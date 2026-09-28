@@ -333,17 +333,41 @@ pause_during_anti_cheat_games = {games}
         hotkey = line("toggle_hotkey", hotkey, "\"Ctrl+Alt+G\""),
         distance = line("distance", t.distance.map(f), &format!("{:.2}", p.distance)),
         glide_ms = line("glide_ms", t.glide_ms.map(f), &format!("{:.0}", p.glide_ms)),
-        momentum = line("momentum", t.momentum.map(|v| v.to_string()), &p.momentum.to_string()),
-        deceleration = line("deceleration", t.deceleration.map(f), &format!("{:.4}", p.deceleration)),
-        flick_notches = line("flick_notches", t.flick_notches.map(|v| v.to_string()), &p.flick_notches.to_string()),
-        flick_gap_ms = line("flick_gap_ms", t.flick_gap_ms.map(f), &format!("{:.0}", p.flick_gap_ms)),
-        acceleration = line("acceleration", t.acceleration.map(f), &format!("{:.1}", p.acceleration)),
+        momentum = line(
+            "momentum",
+            t.momentum.map(|v| v.to_string()),
+            &p.momentum.to_string()
+        ),
+        deceleration = line(
+            "deceleration",
+            t.deceleration.map(f),
+            &format!("{:.4}", p.deceleration)
+        ),
+        flick_notches = line(
+            "flick_notches",
+            t.flick_notches.map(|v| v.to_string()),
+            &p.flick_notches.to_string()
+        ),
+        flick_gap_ms = line(
+            "flick_gap_ms",
+            t.flick_gap_ms.map(f),
+            &format!("{:.0}", p.flick_gap_ms)
+        ),
+        acceleration = line(
+            "acceleration",
+            t.acceleration.map(f),
+            &format!("{:.1}", p.acceleration)
+        ),
         acceleration_window_ms = line(
             "acceleration_window_ms",
             t.acceleration_window_ms.map(f),
             &format!("{:.0}", p.acceleration_window_ms)
         ),
-        max_speed = line("max_speed", t.max_speed.map(f), &format!("{:.0}", p.max_speed)),
+        max_speed = line(
+            "max_speed",
+            t.max_speed.map(f),
+            &format!("{:.0}", p.max_speed)
+        ),
     )
 }
 
@@ -405,7 +429,11 @@ mod tests {
             let uncommented: String = render(&config)
                 .lines()
                 .map(|l| match l.strip_prefix("# ") {
-                    Some(rest) if rest.contains(" = ") && !rest.contains('[') && !rest.contains('"') => rest,
+                    Some(rest)
+                        if rest.contains(" = ") && !rest.contains('[') && !rest.contains('"') =>
+                    {
+                        rest
+                    }
                     _ => l,
                 })
                 .collect::<Vec<_>>()
@@ -430,7 +458,10 @@ mod tests {
         save(&path, &config).unwrap();
         assert_eq!(load(&path).unwrap(), config);
         write_excluded_apps(&path, &["Bar.exe".into()]).unwrap();
-        assert_eq!(load(&path).unwrap().excluded_apps, vec!["Bar.exe".to_string()]);
+        assert_eq!(
+            load(&path).unwrap().excluded_apps,
+            vec!["Bar.exe".to_string()]
+        );
         assert!(!path.with_extension("toml.tmp").exists());
         fs::remove_dir_all(dir).unwrap();
     }

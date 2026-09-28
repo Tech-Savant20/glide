@@ -28,7 +28,11 @@ pub use target::Skip;
 /// Messages to the animation thread.
 #[derive(Debug)]
 enum Msg {
-    Wheel { axis: Axis, notches: f64, time_ms: u32 },
+    Wheel {
+        axis: Axis,
+        notches: f64,
+        time_ms: u32,
+    },
     Stop,
     SetParams(Params),
     Quit,
@@ -73,7 +77,11 @@ impl Smoother {
     /// Removes the mouse hook entirely, so Glide no longer sees or injects any
     /// input, until [`Smoother::resume`].
     pub fn suspend(&self) {
-        let hook = self.hook.lock().unwrap_or_else(PoisonError::into_inner).take();
+        let hook = self
+            .hook
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
         if let Some(hook) = hook {
             hook.stop();
         }
