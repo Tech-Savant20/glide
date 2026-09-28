@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glide Scroll Lab</title>
+<style>
+  :root {
+    --bg: #fbfbfa; --fg: #1d1d1f; --muted: #6e6e73; --panel: #ffffffee; --line: #d8d8dc;
+    --move: #2f6fdf; --event: #e07b18; --bad: #c9372c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161617; --fg: #f2f2f4; --muted: #9a9aa0; --panel: #232325ee; --line: #3a3a3e;
+      --move: #6ea0ff; --event: #f0a050; --bad: #ff6b5e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, "Segoe UI", sans-serif; }
+  main { max-width: 640px; padding: 24px 16px 50vh; }
+  main p { margin: 0; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  main p span { color: var(--muted); display: inline-block; width: 4.5em; font-variant-numeric: tabular-nums; }
+  aside {
+    position: fixed; top: 16px; right: 16px; width: min(420px, calc(100vw - 32px));
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
+    backdrop-filter: blur(12px); font-size: 13px; line-height: 1.5;
+  }
+  h1 { font-size: 15px; margin: 0 0 8px; }
+  .mode { display: flex; gap: 6px; margin-bottom: 10px; }
+  .mode button {
+    flex: 1; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line);
+    background: transparent; color: var(--fg); font: inherit; cursor: pointer;
+  }
+  .mode button[aria-pressed="true"] { background: var(--move); border-color: var(--move); color: #fff; }
+  canvas { width: 100%; height: 150px; display: block; border-radius: 8px; background: color-mix(in srgb, var(--fg) 4%, transparent); }
+  .legend { color: var(--muted); margin: 4px 0 8px; }
+  .legend b { font-weight: 600; }
+  .legend .m { color: var(--move); } .legend .e { color: var(--event); }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0 0 10px; }
+  dt { color: var(--muted); } dd { margin: 0; font-variant-numeric: tabular-nums; }
+  .bad { color: var(--bad); font-weight: 600; }
+  #copy { width: 100%; padding: 6px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--fg); font: inherit; cursor: pointer; }
+  .hint { color: var(--muted); margin: 8px 0 0; }
+</style>
+</head>
+<body>
+<aside>
+  <h1>Glide Scroll Lab</h1>
+  <div class="mode">
+    <button id="native" aria-pressed="true">Browser scrolling</button>
+    <button id="direct" aria-pressed="false">Direct (no browser smoothing)</button>
+  </div>
+  <canvas id="graph" width="840" height="300"></canvas>
+  <div class="legend"><b class="m">bars</b> pixels moved per frame · <b class="e">ticks</b> wheel events that frame</div>
+  <dl id="stats"><dt>Last scroll</dt><dd>Scroll the page with your mouse wheel.</dd></dl>
+  <button id="copy">Copy results</button>
+  <p class="hint">"Direct" applies each wheel event instantly, bypassing the browser's own smoothing. If Direct feels smoother than Browser scrolling, the browser's smoothing is causing the jitter.</p>
+</aside>
+<main id="content"></main>
+<script>
+const content = document.getElementById('content');
+const words = 'the quick brown fox jumps over a lazy dog while glide keeps every frame moving at an even pace'.split(' ');
+const frag = document.createDocumentFragment();
+for (let i = 1; i <= 1500; i++) {
+  const p = document.createElement('p');
+  let text = '';
+  for (let w = 0; w < 10 + (i * 7) % 9; w++) text += words[(i * 3 + w * 5) % words.length] + ' ';
+  p.innerHTML = `<span>${i}</span>${text}`;
+  frag.appendChild(p);
+}
+content.appendChild(frag);
+
+let direct = false;
+const nativeBtn = document.getElementById('native');
+const directBtn = document.getElementById('direct');
+function setMode(d) {
+  direct = d;
+  nativeBtn.setAttribute('aria-pressed', String(!d));
+  directBtn.setAttribute('aria-pressed', String(d));
+}
+nativeBtn.onclick = () => setMode(false);
+directBtn.onclick = () => setMode(true);
+
+let pendingEvents = 0;
+let pendingDelta = 0;
+let lastActivity = 0;
+addEventListener('wheel', e => {
+  pendingEvents++;
+  pendingDelta += e.deltaY;
+  lastActivity = performance.now();
+  if (direct) {
+    e.preventDefault();
+    const scale = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? innerHeight : 1;
+    scrollBy({ top: e.deltaY * scale, left: e.deltaX * scale, behavior: 'instant' });
+  }
+}, { passive: false });
+
+const frames = [];        // rolling window for the graph
+let gesture = null;       // frames of the current scroll
+let lastY = scrollY;
+let lastT = performance.now();
+
+function tick(t) {
+  const y = scrollY;
+  const f = { t, dt: t - lastT, dy: y - lastY, events: pendingEvents, delta: pendingDelta };
+  lastY = y; lastT = t; pendingEvents = 0; pendingDelta = 0;
+  frames.push(f);
+  while (frames.length && t - frames[0].t > 2500) frames.shift();
+
+  const active = f.dy !== 0 || f.events > 0;
+  if (active) lastActivity = t;
+  if (active && !gesture) gesture = [];
+  if (gesture) {
+    gesture.push(f);
+    if (t - lastActivity > 300) { report(gesture); gesture = null; }
+  }
+  draw();
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+const canvas = document.getElementById('graph');
+const ctx = canvas.getContext('2d');
+function draw() {
+  const css = getComputedStyle(document.documentElement);
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  if (!frames.length) return;
+  const now = frames[frames.length - 1].t;
+  const max = Math.max(8, ...frames.map(f => Math.abs(f.dy)));
+  const eventBand = 40;
+  const barW = Math.max(2, W / 150);
+  for (const f of frames) {
+    const x = W - (now - f.t) / 2500 * W;
+    const h = Math.abs(f.dy) / max * (H - eventBand - 8);
+    ctx.fillStyle = css.getPropertyValue('--move');
+    ctx.fillRect(x - barW, H - eventBand - h, barW, h);
+    if (f.events) {
+      ctx.fillStyle = f.events > 1 ? css.getPropertyValue('--bad') : css.getPropertyValue('--event');
+      ctx.fillRect(x - barW, H - eventBand + 6, barW, Math.min(f.events, 4) * 8);
+    }
+  }
+}
+
+let lastReport = '';
+function report(g) {
+  // Trim the idle tail that ended the gesture.
+  while (g.length && g[g.length - 1].dy === 0 && g[g.length - 1].events === 0) g.pop();
+  if (g.length < 3) return;
+
+  const dts = g.slice(1).map(f => f.dt).sort((a, b) => a - b);
+  const frameMs = dts[Math.floor(dts.length / 2)];
+  const moving = g.filter(f => f.dy !== 0);
+  const distance = g.reduce((s, f) => s + f.dy, 0);
+  const events = g.reduce((s, f) => s + f.events, 0);
+
+  // Wheel event spacing while events are flowing.
+  const firstEv = g.findIndex(f => f.events > 0);
+  let lastEv = -1; g.forEach((f, i) => { if (f.events > 0) lastEv = i; });
+  const span = firstEv >= 0 ? g.slice(firstEv, lastEv + 1) : [];
+  const zero = span.filter(f => f.events === 0).length;
+  const multi = span.filter(f => f.events > 1).length;
+
+  // Roughness: how far each frame's movement is from the average of its neighbours,
+  // relative to typical movement. An even glide scores a few percent.
+  let rough = 0, n = 0;
+  for (let i = 1; i < g.length - 1; i++) {
+    if (g[i].dy === 0 && g[i - 1].dy === 0 && g[i + 1].dy === 0) continue;
+    rough += Math.abs(g[i].dy - (g[i - 1].dy + g[i + 1].dy) / 2); n++;
+  }
+  const meanMove = moving.reduce((s, f) => s + Math.abs(f.dy), 0) / Math.max(1, moving.length);
+  const roughness = n ? rough / n / Math.max(meanMove, 1e-6) * 100 : 0;
+
+  const stalls = moving.length ? g.filter((f, i) => i > 0 && f.dt > frameMs * 1.5).length : 0;
+  // A frame that didn't move between two frames that clearly did. Sub-pixel crawl at
+  // the very end of a glide doesn't count.
+  const stillFrames = g.filter((f, i) => i > 0 && i < g.length - 1 && f.dy === 0 &&
+    Math.abs(g[i - 1].dy) >= 1 && Math.abs(g[i + 1].dy) >= 1).length;
+
+  const rows = [
+    ['Mode', direct ? 'Direct' : 'Browser scrolling'],
+    ['Distance', `${Math.round(distance)} px over ${Math.round(g.length * frameMs)} ms`],
+    ['Frame', `${frameMs.toFixed(2)} ms (${(1000 / frameMs).toFixed(0)} Hz)`],
+    ['Wheel events', `${events} · ${zero} frames with none · ${multi} frames with 2+`],
+    ['Roughness', `${roughness.toFixed(1)} %`, roughness > 15],
+    ['Frozen frames', `${stillFrames} mid-scroll frames that didn't move`, stillFrames > 0],
+    ['Late frames', `${stalls} longer than 1.5 frames`, stalls > 0],
+  ];
+  document.getElementById('stats').innerHTML = rows.map(([k, v, bad]) =>
+    `<dt>${k}</dt><dd${bad ? ' class="bad"' : ''}>${v}</dd>`).join('');
+  lastReport = rows.map(([k, v]) => `${k}: ${v}`).join('\n') +
+    '\nPer-frame px: ' + g.map(f => Math.round(f.dy * 10) / 10).join(' ') +
+    '\nPer-frame events: ' + g.map(f => f.events).join('');
+}
+
+document.getElementById('copy').onclick = async () => {
+  if (!lastReport) return;
+  try { await navigator.clipboard.writeText(lastReport); document.getElementById('copy').textContent = 'Copied'; }
+  catch { document.getElementById('copy').textContent = 'Copy failed'; }
+  setTimeout(() => document.getElementById('copy').textContent = 'Copy results', 1200);
+};
+</script>
+</body>
+</html>
