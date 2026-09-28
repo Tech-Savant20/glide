@@ -7,16 +7,15 @@
 //! Each axis tracks the distance it still owes (every notch adds `step`) and a
 //! velocity, and moves in one of two phases:
 //!
-//! - **Gliding**: the owed distance runs out on an exponential ease-out, so a lone
-//!   notch starts immediately and settles smoothly.
 //! - **Rolling**: while notches keep arriving, the engine reads their spacing as the
 //!   speed of the user's finger and moves at that steady speed. Replaying each notch
 //!   as its own ease-out would make the speed spike and sag with every notch, which
 //!   reads as jitter.
+//! - **Gliding**: once the next notch is overdue, the rest runs out on an
+//!   exponential ease-out, with no jump in speed at the handover. After a flick it
+//!   coasts at Apple's deceleration rate instead (momentum).
 //!
-//! When the notches stop, rolling hands over to gliding with no jump in speed. After
-//! a flick, the glide coasts at Apple's deceleration rate instead (momentum). The
-//! distance owed is always emitted exactly, whatever the frame rate.
+//! The distance owed is always emitted exactly, whatever the frame rate.
 
 mod presets;
 
@@ -60,6 +59,9 @@ pub struct Params {
     pub ease_friction: f64,
     /// Notches closer together than this (s) are one continuous roll of the wheel.
     pub roll_gap: f64,
+    /// Starting guess (s) for how far apart the user's notches are when rolling.
+    /// A notch from rest is paced for this gap; the engine then learns the real one.
+    pub first_gap: f64,
     /// Whether a flick keeps coasting.
     pub momentum: bool,
     /// Friction (1/s) while coasting after a flick.
@@ -190,11 +192,15 @@ impl AxisState {
 pub struct Engine {
     params: Params,
     axes: [AxisState; 2],
+    /// How far apart this user's notches usually are when rolling (s), learned
+    /// as they scroll.
+    usual_gap: f64,
 }
 
 impl Engine {
     pub fn new(params: Params) -> Self {
         Self {
+            usual_gap: params.first_gap,
             params,
             axes: Default::default(),
         }
@@ -238,23 +244,28 @@ impl Engine {
         s.owed += notches * p.step * (1.0 + p.acceleration * boost * boost);
         s.since_notch = 0.0;
 
-        match gap {
+        // A notch from rest rolls as if the wheel were turning at the user's usual
+        // pace. If it was a lone notch it simply eases out; if more follow, they
+        // arrive before the ease-out starts and the roll speeds up smoothly.
+        // Giving the first notch a quick ease-out of its own instead front-loads
+        // the motion, so it would surge, sag, then pick up again at the second.
+        let gap = match gap {
             Some(gap) if gap < p.roll_gap => {
-                let gap = gap.max(0.001);
-                let was_idle = s.phase == Phase::Idle;
-                s.phase = Phase::Rolling { gap };
-                // Speed that leaves exactly an ease-out's worth of distance when the
-                // next notch is due, so steady rolling moves at step / gap.
-                s.finger = (s.owed / (ROLL_SLACK * gap + 1.0 / p.ease_friction))
-                    .clamp(-p.max_velocity, p.max_velocity);
-                if was_idle {
-                    s.velocity = s.finger;
+                if gap >= p.fling_interval {
+                    self.usual_gap = 0.8 * self.usual_gap + 0.2 * gap;
                 }
+                gap.max(0.001)
             }
-            _ => {
-                s.phase = Phase::Gliding;
-                s.velocity = (s.owed * p.ease_friction).clamp(-p.max_velocity, p.max_velocity);
-            }
+            _ => self.usual_gap.clamp(p.fling_interval, p.roll_gap),
+        };
+        let was_idle = s.phase == Phase::Idle;
+        s.phase = Phase::Rolling { gap };
+        // Speed that leaves exactly an ease-out's worth of distance when the next
+        // notch is due, so steady rolling moves at step / gap.
+        s.finger = (s.owed / (ROLL_SLACK * gap + 1.0 / p.ease_friction))
+            .clamp(-p.max_velocity, p.max_velocity);
+        if was_idle {
+            s.velocity = s.finger;
         }
     }
 

@@ -180,7 +180,7 @@ smooth_hires = false
 # acceleration_window_ms = 120
 
 # Speed limit, in notches per second.
-# max_speed = 80
+# max_speed = 40
 "##;
 
 #[cfg(test)]

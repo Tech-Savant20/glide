@@ -118,8 +118,7 @@ fn opposite_notch_cancels_motion() {
     assert!(e.velocity(Axis::Vertical) < 0.0);
 
     e.on_notch(Axis::Vertical, 1.0, 5.0);
-    let single = NOTCH * e.params().ease_friction;
-    assert_eq!(e.velocity(Axis::Vertical), single);
+    assert!(e.velocity(Axis::Vertical) > 0.0);
     assert_eq!(run_out(&mut e, FRAME).0, [120, 0]);
 }
 
@@ -173,14 +172,17 @@ fn velocity_is_capped() {
 /// way input really interleaves: notches land between frames. Returns every
 /// frame's output and the frame index of the last notch.
 fn roll(params: Params, notches: u32, gap: f64, dt: f64) -> (Vec<i32>, usize) {
-    let mut e = Engine::new(params);
+    roll_on(&mut Engine::new(params), 0.0, notches, gap, dt)
+}
+
+fn roll_on(e: &mut Engine, start: f64, notches: u32, gap: f64, dt: f64) -> (Vec<i32>, usize) {
     let mut out = Vec::new();
     let mut t = 0.0;
     let mut sent = 0;
     let mut last_notch_frame = 0;
     while sent < notches || e.is_active() {
         while sent < notches && sent as f64 * gap <= t {
-            e.on_notch(Axis::Vertical, -1.0, sent as f64 * gap);
+            e.on_notch(Axis::Vertical, -1.0, start + sent as f64 * gap);
             sent += 1;
             last_notch_frame = out.len();
         }
@@ -205,6 +207,46 @@ fn steady_rolling_moves_at_a_steady_speed() {
         let error = (px as f64 - expected).abs() / expected;
         assert!(error < 0.15, "frame moved {px}, expected ~{expected:.1}: {steady:?}");
     }
+}
+
+#[test]
+fn starting_a_roll_does_not_surge_and_sag() {
+    let mut params = Preset::MagicMouse.params();
+    params.acceleration = 0.0;
+    // Gaps from the second Scroll Lab report, where every roll began with a surge
+    // from the first notch, a sag, then a ramp back up.
+    for gap in [0.12, 0.217, 0.27] {
+        let mut e = Engine::new(params.clone());
+        // The first roll teaches the engine this user's pace...
+        roll_on(&mut e, 0.0, 8, gap, 1.0 / 60.0);
+        // ...so the next one only ever speeds up until it reaches that pace.
+        let (out, last) = roll_on(&mut e, 100.0, 8, gap, 1.0 / 60.0);
+        let rising = &out[..last];
+        assert!(
+            rising.windows(2).all(|w| w[1] >= w[0] - 1),
+            "gap {gap}: speed dipped: {rising:?}"
+        );
+        let steady = 120.0 / gap / 60.0;
+        assert!(rising[0] as f64 >= 0.4 * steady, "gap {gap}: slow start: {rising:?}");
+    }
+}
+
+/// Prints per-frame output for eyeballing: `cargo test -p glide-engine profile -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn profile() {
+    let mut params = Preset::MagicMouse.params();
+    params.acceleration = 0.0;
+    for gap in [0.12, 0.183, 0.27] {
+        println!("gap {gap}: {:?}", roll(params.clone(), 6, gap, 1.0 / 60.0).0);
+    }
+    let mut e = Engine::new(params);
+    e.on_notch(Axis::Vertical, -1.0, 0.0);
+    let mut single = Vec::new();
+    while e.is_active() {
+        single.push(-e.tick(1.0 / 60.0)[0]);
+    }
+    println!("single notch: {single:?}");
 }
 
 #[test]
