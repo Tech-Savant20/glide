@@ -3,8 +3,10 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use glide_engine::{Engine, Params};
-use windows::Win32::Foundation::{CloseHandle, HANDLE};
+use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND};
+use windows::Win32::Graphics::Dwm::{DwmFlush, DwmGetCompositionTimingInfo, DWM_TIMING_INFO};
 use windows::Win32::Graphics::Gdi::{EnumDisplaySettingsW, DEVMODEW, ENUM_CURRENT_SETTINGS};
+use windows::Win32::System::Performance::QueryPerformanceFrequency;
 use windows::Win32::System::Threading::{
     CreateWaitableTimerExW, GetCurrentThread, SetThreadPriority, SetWaitableTimer,
     WaitForSingleObject, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, INFINITE,
@@ -28,11 +30,9 @@ fn run(rx: Receiver<Msg>, params: Params) {
     unsafe {
         let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
     }
-    let timer = FrameTimer::new();
+    let mut pacer = Pacer::new();
     let mut engine = Engine::new(params);
     let mut clock = EventClock::default();
-    let mut frame = Duration::from_secs_f64(1.0 / 60.0);
-    let mut last_frame = Instant::now();
 
     loop {
         if !engine.is_active() {
@@ -41,8 +41,13 @@ fn run(rx: Receiver<Msg>, params: Params) {
             if !handle(msg, &mut engine, &mut clock) {
                 return;
             }
-            frame = display_frame();
-            last_frame = Instant::now();
+            if !engine.is_active() {
+                continue;
+            }
+            // Emit the first frame now rather than after the next vblank, which
+            // removes up to a frame of latency from every scroll.
+            let frame = pacer.restart();
+            inject::send_wheel(engine.tick(frame));
         }
         for msg in rx.try_iter() {
             if !handle(msg, &mut engine, &mut clock) {
@@ -53,12 +58,81 @@ fn run(rx: Receiver<Msg>, params: Params) {
             continue;
         }
 
-        timer.wait(frame);
-        let now = Instant::now();
-        let dt = (now - last_frame).as_secs_f64().min(MAX_FRAME);
-        last_frame = now;
+        let dt = pacer.next_frame();
         inject::send_wheel(engine.tick(dt));
     }
+}
+
+/// Paces output to the compositor so every displayed frame receives exactly one
+/// delta. A free-running timer drifts against vsync, so some frames would get two
+/// deltas and others none, which reads as judder.
+struct Pacer {
+    timer: FrameTimer,
+    frame: Duration,
+    qpc_per_second: f64,
+    last_vblank: Option<u64>,
+    last_wake: Instant,
+}
+
+impl Pacer {
+    fn new() -> Self {
+        let mut qpc_per_second = 0i64;
+        unsafe {
+            let _ = QueryPerformanceFrequency(&mut qpc_per_second);
+        }
+        Self {
+            timer: FrameTimer::new(),
+            frame: display_frame(),
+            qpc_per_second: qpc_per_second.max(1) as f64,
+            last_vblank: None,
+            last_wake: Instant::now(),
+        }
+    }
+
+    /// Starts a new motion and returns the nominal frame length in seconds.
+    fn restart(&mut self) -> f64 {
+        self.frame = display_frame();
+        self.last_vblank = None;
+        self.last_wake = Instant::now();
+        self.frame.as_secs_f64()
+    }
+
+    /// Blocks until the next frame and returns its length in seconds.
+    fn next_frame(&mut self) -> f64 {
+        if let Some(vblank) = wait_for_vblank() {
+            self.last_wake = Instant::now();
+            match self.last_vblank.replace(vblank) {
+                // Vblank timestamps are exact, so frame lengths carry no wake-up jitter.
+                Some(prev) if vblank > prev => {
+                    return ((vblank - prev) as f64 / self.qpc_per_second).min(MAX_FRAME)
+                }
+                None => return self.frame.as_secs_f64(),
+                // Same vblank: DWM did not block (for example, nothing is being
+                // composed). Fall back to the timer so we don't spin.
+                Some(_) => {}
+            }
+        }
+        self.last_vblank = None;
+        self.timer.wait(self.frame);
+        let now = Instant::now();
+        let dt = (now - self.last_wake).as_secs_f64().min(MAX_FRAME);
+        self.last_wake = now;
+        dt
+    }
+}
+
+/// Blocks until the compositor presents, then returns that vblank's QPC timestamp.
+fn wait_for_vblank() -> Option<u64> {
+    let mut info = DWM_TIMING_INFO {
+        cbSize: size_of::<DWM_TIMING_INFO>() as u32,
+        ..Default::default()
+    };
+    unsafe {
+        DwmFlush().ok()?;
+        // Since Windows 8.1 the hwnd must be null: timing is for the whole desktop.
+        DwmGetCompositionTimingInfo(HWND::default(), &mut info).ok()?;
+    }
+    Some(info.qpcVBlank)
 }
 
 /// Applies one message. Returns false when the thread should exit.
@@ -151,5 +225,29 @@ impl Drop for FrameTimer {
                 let _ = CloseHandle(handle);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Needs a live desktop, so it is opt-in: `cargo test -p glide-win -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn pacer_tracks_the_display_refresh() {
+        let mut pacer = Pacer::new();
+        let nominal = pacer.restart();
+        let frames: Vec<f64> = (0..240).map(|_| pacer.next_frame()).skip(1).collect();
+        let mean = frames.iter().sum::<f64>() / frames.len() as f64;
+        let worst = frames.iter().fold(0.0f64, |w, f| w.max((f - nominal).abs()));
+        println!(
+            "nominal {:.3} ms, mean {:.3} ms, worst deviation {:.3} ms, vblank pacing {}",
+            nominal * 1000.0,
+            mean * 1000.0,
+            worst * 1000.0,
+            if wait_for_vblank().is_some() { "on" } else { "off" },
+        );
+        assert!((mean - nominal).abs() < nominal * 0.1);
     }
 }

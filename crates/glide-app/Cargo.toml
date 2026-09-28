@@ -13,3 +13,5 @@ path = "src/main.rs"
 [dependencies]
 glide-engine.workspace = true
 glide-win.workspace = true
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.0.7"
