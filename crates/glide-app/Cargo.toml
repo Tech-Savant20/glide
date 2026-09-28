@@ -1,0 +1,15 @@
+[package]
+name = "glide-app"
+description = "Mac-style smooth scrolling for Windows"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "glide"
+path = "src/main.rs"
+
+[dependencies]
+glide-engine.workspace = true
+glide-win.workspace = true

@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = ["crates/glide-engine", "crates/glide-win", "crates/glide-app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.80"
+
+[workspace.dependencies]
+glide-engine = { path = "crates/glide-engine" }
+glide-win = { path = "crates/glide-win" }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

@@ -1,0 +1,9 @@
+[package]
+name = "glide-engine"
+description = "Platform-independent scroll physics for Glide"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
