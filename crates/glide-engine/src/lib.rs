@@ -39,6 +39,9 @@ const ROLL_SLACK: f64 = 1.25;
 /// speed never shows up as a one-frame jump.
 const SPEED_SMOOTHING: f64 = 0.03;
 
+/// How much each new notch gap moves the rolling pace estimate (0..1).
+const GAP_SMOOTHING: f64 = 0.3;
+
 /// Converts a per-millisecond velocity multiplier into a continuous friction
 /// coefficient `k` (1/s), where `v(t) = v0 * exp(-k t)`.
 pub fn friction_from_per_ms(rate: f64) -> f64 {
@@ -90,8 +93,9 @@ impl Default for Params {
 enum Phase {
     #[default]
     Idle,
-    /// Moving at the finger's speed, estimated from the last notch gap.
-    Rolling { gap: f64 },
+    /// Moving at the finger's speed, estimated from recent notch gaps. `measured`
+    /// is false while the gap is still the guessed usual pace.
+    Rolling { gap: f64, measured: bool },
     Gliding,
 }
 
@@ -125,7 +129,7 @@ impl AxisState {
         self.since_notch += dt;
         let dir = self.owed.signum();
 
-        if let Phase::Rolling { gap } = self.phase {
+        if let Phase::Rolling { gap, .. } = self.phase {
             let due = ROLL_SLACK * gap - self.since_notch;
             if due > 0.0 {
                 // Aim to arrive, when the next notch is due, with exactly an
@@ -249,17 +253,29 @@ impl Engine {
         // arrive before the ease-out starts and the roll speeds up smoothly.
         // Giving the first notch a quick ease-out of its own instead front-loads
         // the motion, so it would surge, sag, then pick up again at the second.
-        let gap = match gap {
+        let (gap, measured) = match gap {
             Some(gap) if gap < p.roll_gap => {
-                if gap >= p.fling_interval {
+                let gap = gap.max(0.001);
+                if gap < p.fling_interval {
+                    // A flick: react at once.
+                    (gap, true)
+                } else {
                     self.usual_gap = 0.8 * self.usual_gap + 0.2 * gap;
+                    // Nobody rolls a wheel perfectly evenly, so average the gap over
+                    // the roll rather than reacting fully to each one.
+                    match s.phase {
+                        Phase::Rolling {
+                            gap: previous,
+                            measured: true,
+                        } => (previous + GAP_SMOOTHING * (gap - previous), true),
+                        _ => (gap, true),
+                    }
                 }
-                gap.max(0.001)
             }
-            _ => self.usual_gap.clamp(p.fling_interval, p.roll_gap),
+            _ => (self.usual_gap.clamp(p.fling_interval, p.roll_gap), false),
         };
         let was_idle = s.phase == Phase::Idle;
-        s.phase = Phase::Rolling { gap };
+        s.phase = Phase::Rolling { gap, measured };
         // Speed that leaves exactly an ease-out's worth of distance when the next
         // notch is due, so steady rolling moves at step / gap.
         s.finger = (s.owed / (ROLL_SLACK * gap + 1.0 / p.ease_friction))

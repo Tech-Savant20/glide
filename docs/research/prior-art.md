@@ -103,6 +103,25 @@ Glide is the only Windows tool here that paces output to vsync. Mos does it on m
 | Free-spin wheels (Logitech MX) | SmoothMice (`FreeSpinDetection.cs`), smooth-scroll-daemon | Detect free-spin bursts and suppress inertia. Emit both `REL_WHEEL_HI_RES` and `REL_WHEEL` at 120 boundaries (Linux) |
 | Reduce motion | quangtruong2003 (`RespectReduceMotion`) | Follow the OS animation setting: Auto / Always / Never |
 
+## Measured ripple
+
+Ripple is the standard deviation of scroll speed over its mean during a roll that has settled, in percent. Lower is smoother. The table comes from `cargo test -p glide-engine ripple_table -- --ignored --nocapture`.
+
+- The two reference models are re-implemented in the test harness from the code cited above.
+- Notches are picked up on the next frame, which is how all of these tools behave.
+- The jitter column varies each gap randomly by up to ±20%, from a fixed seed.
+
+| Gap between notches | Glide 60 Hz | Glide 144 Hz | Glide, ±20% jitter | Pulse queue (400 ms, scale 4) | Constant-rate 200 ms window |
+|---|---|---|---|---|---|
+| 80 ms | 3.8% | 1.9% | 10.8% | 4.7% | 18.2% |
+| 120 ms | 2.7% | 1.3% | 10.0% | 7.1% | 29.0% |
+| 160 ms | 2.3% | 0.6% | 12.2% | 18.6% | 30.1% |
+| 200 ms | 0.5% | 1.0% | 11.3% | 30.7% | 30.1% |
+| 240 ms | 1.9% | 0.8% | 12.5% | 40.4% | 45.3% |
+| 300 ms | 0.4% | 0.6% | 13.1% | 54.4% | 76.2% |
+
+SmoothWheelScroll's own measurement for its window model is 35.4% at a 150 ms gap, which matches this harness (33.6% at 140 ms, 30.1% at 160 ms). Glide's tests fail if a steady roll goes above 5% or a ±20%-jittered roll goes above 15%.
+
 ## What this means for Glide
 
 1. **Glide's current engine is on the right track.** Moving at the finger's speed and then decelerating is essentially Mac Mouse Fix's hybrid (linear base + drag tail with `speedSmoothing`). That's the most refined open-source design found. It also avoids the window-payout ripple (35% at a 150/200 ms gap) and the pulse queue's per-notch spikes.

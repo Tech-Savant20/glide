@@ -231,6 +231,139 @@ fn starting_a_roll_does_not_surge_and_sag() {
     }
 }
 
+/// Speed ripple of a steady roll: the standard deviation of the scroll speed over
+/// its mean, in percent, measured once the roll has settled (from the 4th notch to
+/// the last). This is the metric SmoothWheelScroll uses; its constant-rate window
+/// model measured ~35% at a 150 ms gap with a 200 ms window (see
+/// docs/research/prior-art.md). `jitter` varies each gap by up to that fraction,
+/// deterministically, because real fingers never roll perfectly evenly.
+fn ripple(params: &Params, gap: f64, jitter: f64, hz: f64) -> f64 {
+    let dt = 1.0 / hz;
+    let mut e = Engine::new(params.clone());
+    // Warm up so the engine has learned this pace, as it would in real use.
+    roll_on(&mut e, 0.0, 8, gap, dt);
+
+    let notches = 24;
+    let mut times = Vec::with_capacity(notches);
+    let mut t = 100.0;
+    let mut seed = 0x2545_f491_u32;
+    for _ in 0..notches {
+        times.push(t);
+        // xorshift: a fixed, repeatable sequence in [-1, 1).
+        seed ^= seed << 13;
+        seed ^= seed >> 17;
+        seed ^= seed << 5;
+        let r = seed as f64 / u32::MAX as f64 * 2.0 - 1.0;
+        t += gap * (1.0 + jitter * r);
+    }
+
+    let (first, last) = (times[3], times[notches - 1]);
+    let mut now = 100.0;
+    let mut next = 0;
+    let mut speeds = Vec::new();
+    while now < last {
+        while next < notches && times[next] <= now {
+            e.on_notch(Axis::Vertical, -1.0, times[next]);
+            next += 1;
+        }
+        e.tick(dt);
+        now += dt;
+        if now > first {
+            speeds.push(-e.velocity(Axis::Vertical));
+        }
+    }
+    let mean = speeds.iter().sum::<f64>() / speeds.len() as f64;
+    let var = speeds.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / speeds.len() as f64;
+    var.sqrt() / mean * 100.0
+}
+
+#[test]
+fn steady_rolls_have_little_speed_ripple() {
+    let mut params = Preset::MagicMouse.params();
+    params.acceleration = 0.0;
+    for hz in [60.0, 144.0] {
+        for gap_ms in (80..=300).step_by(10) {
+            let r = ripple(&params, gap_ms as f64 / 1000.0, 0.0, hz);
+            assert!(r < 5.0, "{hz} Hz, {gap_ms} ms gap: ripple {r:.1}%");
+        }
+    }
+}
+
+#[test]
+fn uneven_rolls_stay_calmer_than_the_notches() {
+    let mut params = Preset::MagicMouse.params();
+    params.acceleration = 0.0;
+    // With gaps varying by up to ±20%, the speed should vary less than the input does.
+    for gap_ms in (80..=300).step_by(20) {
+        let r = ripple(&params, gap_ms as f64 / 1000.0, 0.2, 60.0);
+        assert!(r < 15.0, "{gap_ms} ms gap with jitter: ripple {r:.1}%");
+    }
+}
+
+/// Ripple of another tool's model on a perfectly steady roll at 60 Hz, measured the
+/// same way. `share(t)` is the cumulative fraction of a notch paid out `t` seconds
+/// after it arrived; every notch is paid out independently and the results summed,
+/// which is how both reference models work.
+fn reference_ripple(gap: f64, share: impl Fn(f64) -> f64) -> f64 {
+    let dt = 1.0 / 60.0;
+    let notches = 40;
+    let (start, end) = (8.0 * gap, (notches - 1) as f64 * gap);
+    let mut speeds = Vec::new();
+    let mut t = start;
+    while t < end {
+        let moved: f64 = (0..notches)
+            // Notches are picked up on the next frame, as in the real tools.
+            .map(|n| (n as f64 * gap / dt - 1e-9).ceil() * dt)
+            .filter(|&at| at <= t)
+            .map(|at| share(t + dt - at) - share(t - at))
+            .sum();
+        speeds.push(moved / dt);
+        t += dt;
+    }
+    let mean = speeds.iter().sum::<f64>() / speeds.len() as f64;
+    let var = speeds.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / speeds.len() as f64;
+    var.sqrt() / mean * 100.0
+}
+
+/// Michael Herf's pulse curve as used by SmoothScroll (400 ms, scale 4).
+fn pulse_share(t: f64) -> f64 {
+    let raw = |x: f64| {
+        if x < 1.0 {
+            x - (1.0 - (-x).exp())
+        } else {
+            let start = (-1.0f64).exp();
+            start + (1.0 - (-(x - 1.0)).exp()) * (1.0 - start)
+        }
+    };
+    let u = (t / 0.4).clamp(0.0, 1.0);
+    raw(u * 4.0) / raw(4.0)
+}
+
+/// SmoothWheelScroll's constant-rate window (200 ms).
+fn window_share(t: f64) -> f64 {
+    (t / 0.2).clamp(0.0, 1.0)
+}
+
+/// Prints the ripple table: `cargo test -p glide-engine ripple_table -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn ripple_table() {
+    let mut params = Preset::MagicMouse.params();
+    params.acceleration = 0.0;
+    println!("gap ms | Glide 60 Hz | Glide 144 Hz | Glide ±20% jitter | pulse queue | 200 ms window");
+    for gap_ms in (80..=300).step_by(20) {
+        let gap = gap_ms as f64 / 1000.0;
+        println!(
+            "{gap_ms:>6} | {:>10.1}% | {:>11.1}% | {:>16.1}% | {:>10.1}% | {:>12.1}%",
+            ripple(&params, gap, 0.0, 60.0),
+            ripple(&params, gap, 0.0, 144.0),
+            ripple(&params, gap, 0.2, 60.0),
+            reference_ripple(gap, pulse_share),
+            reference_ripple(gap, window_share),
+        );
+    }
+}
+
 /// Prints per-frame output for eyeballing: `cargo test -p glide-engine profile -- --ignored --nocapture`
 #[test]
 #[ignore]
