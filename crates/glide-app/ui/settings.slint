@@ -1,0 +1,386 @@
+// Glide's settings window. Every change is saved at once; the running Glide
+// picks it up from the settings file.
+
+import {
+    Button, ComboBox, GroupBox, LineEdit, ListView, Slider, StandardListView,
+    Switch, TabWidget, Palette,
+} from "std-widgets.slint";
+
+// One slider with its label and current value.
+component Knob inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> hint;
+    in property <float> minimum;
+    in property <float> maximum;
+    in-out property <float> value;
+    in property <string> shown;
+    in property <bool> enabled: true;
+    callback moved(float);
+
+    spacing: 12px;
+    VerticalLayout {
+        width: 150px;
+        alignment: center;
+        Text { text: root.label; }
+        Text { text: root.hint; font-size: 11px; color: Palette.foreground.transparentize(0.4); }
+    }
+    Slider {
+        enabled: root.enabled;
+        minimum: root.minimum;
+        maximum: root.maximum;
+        value <=> root.value;
+        changed(v) => { root.moved(v); }
+    }
+    Text {
+        width: 64px;
+        text: root.shown;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+    }
+}
+
+component Caption inherits Text {
+    font-size: 12px;
+    wrap: word-wrap;
+    color: Palette.foreground.transparentize(0.35);
+}
+
+export component SettingsWindow inherits Window {
+    title: "Glide Settings";
+    preferred-width: 820px;
+    preferred-height: 600px;
+    min-width: 720px;
+    min-height: 520px;
+
+    // Scrolling
+    in property <[string]> presets;
+    in-out property <int> preset-index;
+    in-out property <bool> natural;
+    in-out property <bool> momentum;
+    in-out property <float> distance;
+    in-out property <float> glide-ms;
+    in-out property <float> coast-ms;
+    in-out property <float> acceleration;
+    in-out property <float> max-speed;
+    in property <bool> tuned;
+    in property <string> curve-notch;
+    in property <string> curve-roll;
+
+    // Apps
+    in property <[StandardListViewItem]> excluded;
+    in-out property <int> excluded-current: -1;
+    in property <[string]> running-apps;
+    in-out property <int> running-current: -1;
+    in property <string> skipped-summary;
+    in-out property <bool> smooth-hires;
+
+    // General
+    in-out property <bool> autostart;
+    in-out property <bool> exams;
+    in-out property <bool> games;
+    in-out property <string> hotkey;
+    in property <string> hotkey-status;
+    in property <string> version;
+    in property <string> status;
+    in-out property <int> tab;
+
+    callback preset-selected(int);
+    callback natural-changed(bool);
+    callback momentum-changed(bool);
+    callback knob-changed(string, float);
+    callback reset-tuning();
+    callback remove-excluded(int);
+    callback add-running(int);
+    callback refresh-running();
+    callback smooth-hires-changed(bool);
+    callback autostart-changed(bool);
+    callback exams-changed(bool);
+    callback games-changed(bool);
+    callback hotkey-changed(string);
+    callback open-log();
+    callback open-config();
+    callback open-slint();
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+
+        TabWidget {
+            current-index <=> root.tab;
+            Tab {
+                title: "Scrolling";
+                HorizontalLayout {
+                    padding: 12px;
+                    spacing: 20px;
+
+                    VerticalLayout {
+                        spacing: 10px;
+                        alignment: start;
+                        width: 440px;
+
+                        HorizontalLayout {
+                            spacing: 12px;
+                            Text { text: "Feel"; vertical-alignment: center; width: 150px; }
+                            ComboBox {
+                                model: root.presets;
+                                current-index <=> root.preset-index;
+                                selected(_) => { root.preset-selected(self.current-index); }
+                            }
+                        }
+                        Switch {
+                            text: "Natural scrolling (reverse direction, like a Mac)";
+                            checked <=> root.natural;
+                            toggled => { root.natural-changed(self.checked); }
+                        }
+                        Switch {
+                            text: "Keep coasting after a quick flick";
+                            checked <=> root.momentum;
+                            toggled => { root.momentum-changed(self.checked); }
+                        }
+
+                        GroupBox {
+                            title: "Fine-tuning";
+                            VerticalLayout {
+                                spacing: 6px;
+                                Knob {
+                                    label: "Distance per notch";
+                                    hint: "1.0 is Windows' normal";
+                                    minimum: 0.3; maximum: 3.0;
+                                    value <=> root.distance;
+                                    shown: (round(root.distance * 10) / 10) + "×";
+                                    moved(v) => { root.knob-changed("distance", v); }
+                                }
+                                Knob {
+                                    label: "Glide time";
+                                    hint: "How long a scroll takes to stop";
+                                    minimum: 100; maximum: 600;
+                                    value <=> root.glide-ms;
+                                    shown: round(root.glide-ms) + " ms";
+                                    moved(v) => { root.knob-changed("glide_ms", v); }
+                                }
+                                Knob {
+                                    label: "Coasting";
+                                    hint: "After a flick; macOS ≈ 500 ms";
+                                    enabled: root.momentum;
+                                    minimum: 100; maximum: 1500;
+                                    value <=> root.coast-ms;
+                                    shown: round(root.coast-ms / 10) * 10 + " ms";
+                                    moved(v) => { root.knob-changed("coast_ms", v); }
+                                }
+                                Knob {
+                                    label: "Acceleration";
+                                    hint: "Extra distance for fast spins";
+                                    minimum: 0; maximum: 3;
+                                    value <=> root.acceleration;
+                                    shown: root.acceleration < 0.05 ? "Off" : (round(root.acceleration * 10) / 10) + "";
+                                    moved(v) => { root.knob-changed("acceleration", v); }
+                                }
+                                Knob {
+                                    label: "Top speed";
+                                    hint: "Notches per second";
+                                    minimum: 10; maximum: 100;
+                                    value <=> root.max-speed;
+                                    shown: round(root.max-speed) + "";
+                                    moved(v) => { root.knob-changed("max_speed", v); }
+                                }
+                                HorizontalLayout {
+                                    alignment: end;
+                                    Button {
+                                        text: "Reset to preset";
+                                        enabled: root.tuned;
+                                        clicked => { root.reset-tuning(); }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 8px;
+                        horizontal-stretch: 1;
+                        Text { text: "Try it here"; font-weight: 600; }
+                        Caption { text: "Scroll this list. Changes apply as soon as you make them."; }
+
+                        // Speed over time for one notch (blue) and a steady roll (grey).
+                        Rectangle {
+                            height: 90px;
+                            border-radius: 6px;
+                            background: Palette.alternate-background;
+                            Path {
+                                x: 8px; y: 8px;
+                                width: parent.width - 16px;
+                                height: parent.height - 16px;
+                                viewbox-width: 1000;
+                                viewbox-height: 100;
+                                commands: root.curve-roll;
+                                stroke: Palette.foreground.transparentize(0.6);
+                                stroke-width: 1.5px;
+                            }
+                            Path {
+                                x: 8px; y: 8px;
+                                width: parent.width - 16px;
+                                height: parent.height - 16px;
+                                viewbox-width: 1000;
+                                viewbox-height: 100;
+                                commands: root.curve-notch;
+                                stroke: #2f6fdf;
+                                stroke-width: 2px;
+                            }
+                        }
+                        Caption { text: "Speed over 1.2 s: one notch (blue) and five notches rolled (grey)."; }
+
+                        Rectangle {
+                            border-radius: 6px;
+                            border-width: 1px;
+                            border-color: Palette.border;
+                            ListView {
+                                for i in 120: HorizontalLayout {
+                                    padding-left: 12px;
+                                    padding-right: 12px;
+                                    padding-top: 5px;
+                                    padding-bottom: 5px;
+                                    Text {
+                                        text: "Line " + (i + 1) + (mod(i, 10) == 9
+                                            ? " — a landmark, to judge distance"
+                                            : " — scroll here with your mouse wheel");
+                                        font-weight: mod(i, 10) == 9 ? 600 : 400;
+                                        overflow: elide;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Tab {
+                title: "Apps";
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 10px;
+                    alignment: start;
+                    Caption { text: root.skipped-summary; }
+
+                    Text { text: "Normal scrolling in these apps"; font-weight: 600; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Rectangle {
+                            height: 160px;
+                            border-radius: 6px;
+                            border-width: 1px;
+                            border-color: Palette.border;
+                            StandardListView {
+                                model: root.excluded;
+                                current-item <=> root.excluded-current;
+                            }
+                            if root.excluded.length == 0: Caption {
+                                text: "None yet. Add an app below, or use the tray menu while you're in it.";
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: start;
+                            Button {
+                                text: "Remove";
+                                enabled: root.excluded-current >= 0;
+                                clicked => { root.remove-excluded(root.excluded-current); }
+                            }
+                        }
+                    }
+
+                    Text { text: "Add an open app"; font-weight: 600; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        ComboBox {
+                            model: root.running-apps;
+                            current-index <=> root.running-current;
+                        }
+                        Button {
+                            text: "Add";
+                            enabled: root.running-current >= 0 && root.running-apps.length > 0;
+                            clicked => { root.add-running(root.running-current); }
+                        }
+                        Button {
+                            text: "Refresh";
+                            clicked => { root.refresh-running(); }
+                        }
+                    }
+                    Caption { text: "Tip: the tray menu's \"Normal scrolling in …\" does the same for the app you're in."; }
+
+                    Switch {
+                        text: "Also smooth high-resolution and free-spinning wheels";
+                        checked <=> root.smooth-hires;
+                        toggled => { root.smooth-hires-changed(self.checked); }
+                    }
+                    Caption { text: "Off by default: those wheels already send fine steps, so most people don't need it."; }
+                }
+            }
+
+            Tab {
+                title: "General";
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 12px;
+                    alignment: start;
+
+                    Switch {
+                        text: "Start Glide when I sign in to Windows";
+                        checked <=> root.autostart;
+                        toggled => { root.autostart-changed(self.checked); }
+                    }
+
+                    Switch {
+                        text: "Stop Glide while exam software runs";
+                        checked <=> root.exams;
+                        toggled => { root.exams-changed(self.checked); }
+                    }
+                    Caption {
+                        text: "Safe Exam Browser, Respondus LockDown Browser, Examplify, Guardian Browser, Pearson OnVUE and Inspera. Glide removes its mouse hook completely and comes back when the exam app closes.";
+                    }
+
+                    Switch {
+                        text: "Stop Glide while games with anti-cheat run";
+                        checked <=> root.games;
+                        toggled => { root.games-changed(self.checked); }
+                    }
+                    Caption { text: "VALORANT and League of Legends (Riot Vanguard), and games using Easy Anti-Cheat or BattlEye."; }
+
+                    HorizontalLayout {
+                        spacing: 12px;
+                        Text { text: "On/off shortcut"; vertical-alignment: center; width: 150px; }
+                        LineEdit {
+                            placeholder-text: "For example Ctrl+Alt+G";
+                            text <=> root.hotkey;
+                            edited(t) => { root.hotkey-changed(t); }
+                        }
+                    }
+                    Caption { text: root.hotkey-status; }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+                        Button { text: "Open settings file"; clicked => { root.open-config(); } }
+                        Button { text: "Open log"; clicked => { root.open-log(); } }
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+            Caption { text: root.status; vertical-alignment: center; }
+            Rectangle { horizontal-stretch: 1; }
+            Caption { text: "Glide " + root.version + " ·"; }
+            Rectangle {
+                width: link.preferred-width;
+                height: link.preferred-height;
+                link := Caption { text: "Made with Slint"; color: #2f6fdf; }
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.open-slint(); }
+                }
+            }
+        }
+    }
+}

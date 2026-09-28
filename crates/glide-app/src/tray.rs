@@ -17,7 +17,7 @@ use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, UnregisterHotKey};
 use windows::Win32::UI::Shell::{
-    ShellExecuteW, Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_SHOWTIP, NIF_TIP, NIM_ADD,
+    Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_SHOWTIP, NIF_TIP, NIM_ADD,
     NIM_DELETE, NIM_MODIFY, NIM_SETVERSION, NIN_SELECT, NOTIFYICONDATAW,
     NOTIFYICONDATAW_0, NOTIFYICON_VERSION_4,
 };
@@ -26,7 +26,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, GetMessageW, GetSystemMetrics, PostMessageW, PostQuitMessage,
     RegisterClassW, RegisterWindowMessageW, SetForegroundWindow, TrackPopupMenu, TranslateMessage,
     HICON, MENU_ITEM_FLAGS, MF_CHECKED, MF_GRAYED, MF_SEPARATOR, MF_STRING, MSG, SM_CXSMICON,
-    SW_SHOWNORMAL, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WM_APP,
+    TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WM_APP,
     WM_CONTEXTMENU, WM_DESTROY, WM_HOTKEY, WM_NULL, WNDCLASSW, WS_OVERLAPPED,
 };
 
@@ -280,7 +280,7 @@ fn show_menu(hwnd: HWND, at: POINT) {
             add_item(menu, flags, ID_EXCLUDE, &format!("Normal scrolling in {app}"));
         }
     }
-    add_item(menu, none, ID_SETTINGS, "Open settings file");
+    add_item(menu, none, ID_SETTINGS, "Settings…");
     let auto = if autostart::is_enabled() { MF_CHECKED } else { none };
     add_item(menu, auto, ID_AUTOSTART, "Start with Windows");
     unsafe {
@@ -328,16 +328,16 @@ fn handle_command(hwnd: HWND, shared: &Shared, command: u32, last_app: Option<St
                 Err(e) => log!("Couldn't save the exclusion for {app}: {e}"),
             }
         }
-        ID_SETTINGS => unsafe {
-            ShellExecuteW(
-                None,
-                w!("open"),
-                w!("notepad.exe"),
-                &HSTRING::from(shared.config_path.as_os_str()),
-                None,
-                SW_SHOWNORMAL,
-            );
-        },
+        ID_SETTINGS => {
+            // A separate process, so the tray part stays small; it opens its
+            // window or brings an already open one to the front.
+            let spawned = std::env::current_exe()
+                .and_then(|exe| std::process::Command::new(exe).arg("--settings").spawn());
+            if let Err(e) = spawned {
+                log!("Couldn't open the settings window: {e}");
+            }
+            return;
+        }
         ID_AUTOSTART => {
             let on = !autostart::is_enabled();
             match autostart::set_enabled(on) {

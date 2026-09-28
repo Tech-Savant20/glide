@@ -14,6 +14,7 @@ path = "src/main.rs"
 glide-engine.workspace = true
 glide-win.workspace = true
 serde = { version = "1.0.229", features = ["derive"] }
+slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-software", "accessibility"] }
 toml = "1.0.7"
 
 [dependencies.windows]
@@ -30,3 +31,6 @@ features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ]
+
+[build-dependencies]
+slint-build = "1.18"

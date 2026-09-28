@@ -22,7 +22,7 @@ use std::thread::JoinHandle;
 use glide_engine::{Axis, Params};
 
 pub use hook::Options;
-pub use processes::{foreground_app_name, running_process_names};
+pub use processes::{foreground_app_name, running_process_names, visible_window_apps};
 pub use target::Skip;
 
 /// Messages to the animation thread.

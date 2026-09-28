@@ -1,7 +1,7 @@
 //! Glide: Mac-style smooth scrolling for Windows.
 //!
-//! Runs in the background with a tray icon. `glide --debug`, run from a terminal,
-//! also prints what it's doing there.
+//! Runs in the background with a tray icon. `glide --settings` opens the settings
+//! window, and `glide --debug`, run from a terminal, also prints what it's doing there.
 
 #![windows_subsystem = "windows"]
 
@@ -12,6 +12,7 @@ mod hotkey;
 mod icon;
 mod log;
 mod pause;
+mod settings;
 mod tray;
 
 use std::sync::Mutex;
@@ -84,16 +85,27 @@ fn fatal(message: &str) -> ! {
 
 fn main() {
     let debug = std::env::args().any(|a| a == "--debug");
-    unsafe {
-        if debug {
-            // Show output in the terminal that started us.
+    if debug {
+        // Show output in the terminal that started us.
+        unsafe {
             let _ = AttachConsole(ATTACH_PARENT_PROCESS);
         }
+    }
+    log::init();
+
+    if std::env::args().any(|a| a == "--settings") {
+        // The UI toolkit sets up display scaling itself.
+        if let Err(e) = settings::run() {
+            fatal(&format!("couldn't open the settings window: {e}"));
+        }
+        return;
+    }
+
+    unsafe {
         // Real pixel sizes for the tray icon, and screen coordinates that match
         // the mouse hook's on scaled displays.
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     }
-    log::init();
 
     // One Glide at a time: two would smooth every scroll twice.
     let _instance = unsafe { CreateMutexW(None, true, w!("Local\\Glide.SingleInstance")) };
