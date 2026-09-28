@@ -1,0 +1,28 @@
+{
+    "version": "{version}",
+    "description": "Mac-style smooth scrolling for Windows mouse wheels",
+    "homepage": "https://github.com/Tech-Savant20/glide",
+    "license": "MIT|Apache-2.0",
+    "architecture": {
+        "64bit": {
+            "url": "{base}/Glide-{version}-portable.zip",
+            "hash": "{zip_sha256}"
+        }
+    },
+    "bin": "glide.exe",
+    "shortcuts": [
+        ["glide.exe", "Glide"],
+        ["glide.exe", "Glide Settings", "--settings"]
+    ],
+    "checkver": "github",
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/Tech-Savant20/glide/releases/download/v$version/Glide-$version-portable.zip"
+            }
+        },
+        "hash": {
+            "url": "$baseurl/SHA256SUMS.txt"
+        }
+    }
+}

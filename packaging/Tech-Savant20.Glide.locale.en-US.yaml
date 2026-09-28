@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: Tech-Savant20.Glide
+PackageVersion: {version}
+PackageLocale: en-US
+Publisher: Glide contributors
+PublisherUrl: https://github.com/Tech-Savant20/glide
+PublisherSupportUrl: https://github.com/Tech-Savant20/glide/issues
+PackageName: Glide
+PackageUrl: https://github.com/Tech-Savant20/glide
+License: MIT OR Apache-2.0
+LicenseUrl: https://github.com/Tech-Savant20/glide#license
+ShortDescription: Mac-style smooth scrolling for Windows mouse wheels.
+Description: |-
+  Glide turns each notch of a mouse wheel into smooth motion, like scrolling on a Mac:
+  eased, steady while you roll, and coasting after a flick. It leaves admin windows,
+  games and apps with their own smooth scrolling alone, and steps aside completely
+  while exam software or games with anti-cheat run.
+Moniker: glide
+Tags:
+  - mouse
+  - scrolling
+  - smooth-scrolling
+  - mouse-wheel
+  - macos
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

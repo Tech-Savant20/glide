@@ -1,0 +1,64 @@
+name: Release
+
+# Pushing a tag like v0.1.0 builds everything and creates a draft GitHub release
+# with the installer, portable zip, checksums and package-manager manifests.
+# Running it by hand builds the same files as a workflow artifact only.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check the tag matches Cargo.toml
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        run: |
+          $cargo = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          $tag = '${{ github.ref_name }}'.TrimStart('v')
+          if ($cargo -ne $tag) { throw "Tag v$tag doesn't match Cargo.toml version $cargo" }
+
+      - name: Test
+        run: cargo test --workspace --locked
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --no-progress -y
+          }
+
+      - name: Build and package
+        shell: pwsh
+        run: ./scripts/package.ps1
+
+      # Code signing goes here once the SignPath Foundation (free for open source)
+      # approves the project: sign dist/glide.exe before packaging and the
+      # installer after. See https://signpath.org.
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: glide-${{ github.ref_name }}
+          path: dist/
+
+      - name: Create draft release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $files = Get-ChildItem dist -File | ForEach-Object { $_.FullName }
+          $files += Get-ChildItem dist/manifests -Recurse -File | ForEach-Object { $_.FullName }
+          gh release create '${{ github.ref_name }}' $files --draft --generate-notes --title 'Glide ${{ github.ref_name }}'

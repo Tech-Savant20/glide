@@ -10,6 +10,7 @@ mod autostart;
 mod config;
 mod hotkey;
 mod icon;
+mod icon_art;
 mod log;
 mod pause;
 mod settings;
@@ -24,9 +25,6 @@ use windows::core::{w, HSTRING};
 use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
 use windows::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};
 use windows::Win32::System::Threading::CreateMutexW;
-use windows::Win32::UI::HiDpi::{
-    SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
-};
 use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
 
 /// Everything the tray thread and the watcher thread share.
@@ -98,18 +96,13 @@ fn main() {
     }
     log::init();
 
+    // Display scaling (per-monitor DPI awareness) comes from the manifest that
+    // build.rs embeds.
     if std::env::args().any(|a| a == "--settings") {
-        // The UI toolkit sets up display scaling itself.
         if let Err(e) = settings::run() {
             fatal(&format!("couldn't open the settings window: {e}"));
         }
         return;
-    }
-
-    unsafe {
-        // Real pixel sizes for the tray icon, and screen coordinates that match
-        // the mouse hook's on scaled displays.
-        let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     }
 
     // One Glide at a time: two would smooth every scroll twice.
