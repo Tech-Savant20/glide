@@ -12,13 +12,30 @@ use serde::Deserialize;
 /// A single notch settles when 95% of its distance has been covered: e^(-k t) = 1/20.
 const SETTLE: f64 = 2.995_732_273_553_991; // ln(20)
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub preset: PresetName,
     pub natural: bool,
     pub smooth_hires: bool,
+    /// Remove the mouse hook while exam lockdown or proctoring software runs.
+    pub pause_during_exams: bool,
+    /// Extra process names that count as exam software.
+    pub exam_apps: Vec<String>,
     pub tuning: Tuning,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            preset: PresetName::default(),
+            natural: false,
+            smooth_hires: false,
+            pause_during_exams: true,
+            exam_apps: Vec::new(),
+            tuning: Tuning::default(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -154,6 +171,15 @@ natural = false
 # Also smooth free-spinning or high-resolution wheels, which already send fine steps.
 smooth_hires = false
 
+# Stop Glide completely (it stops reading your mouse) while exam lockdown or
+# proctoring software runs: Safe Exam Browser, Respondus LockDown Browser,
+# Examplify, Guardian Browser, Pearson OnVUE and Inspera. Glide resumes by itself
+# when the exam app closes.
+pause_during_exams = true
+
+# Other programs that should pause Glide the same way, by process name.
+# exam_apps = ["MyUniversityExam.exe"]
+
 # Fine-tuning. Remove the leading "# " from a line to override the preset.
 # The values shown are the magic-mouse preset.
 [tuning]
@@ -213,6 +239,14 @@ mod tests {
         assert!((a.fling_interval - b.fling_interval).abs() < 1e-12);
         assert!((a.acceleration_window - b.acceleration_window).abs() < 1e-12);
         assert_eq!(a.max_velocity, b.max_velocity);
+    }
+
+    #[test]
+    fn exam_pause_is_on_unless_turned_off() {
+        assert!(Config::default().pause_during_exams);
+        assert!(toml::from_str::<Config>("").unwrap().pause_during_exams);
+        let off: Config = toml::from_str("pause_during_exams = false").unwrap();
+        assert!(!off.pause_during_exams);
     }
 
     #[test]

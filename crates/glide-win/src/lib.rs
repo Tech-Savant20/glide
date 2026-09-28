@@ -11,14 +11,17 @@
 mod animator;
 mod hook;
 mod inject;
+mod processes;
 
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::mpsc::{self, Sender};
+use std::sync::{Mutex, PoisonError};
 use std::thread::JoinHandle;
 
 use glide_engine::{Axis, Params};
 
 pub use hook::Options;
+pub use processes::running_process_names;
 
 /// Messages to the animation thread.
 #[derive(Debug)]
@@ -33,7 +36,8 @@ enum Msg {
 /// has no user data and reaches its state through statics.
 pub struct Smoother {
     tx: Sender<Msg>,
-    hook: hook::HookThread,
+    /// `None` while suspended: the hook is fully removed, not just bypassed.
+    hook: Mutex<Option<hook::HookThread>>,
     animator: JoinHandle<()>,
 }
 
@@ -42,11 +46,17 @@ impl Smoother {
         let (tx, rx) = mpsc::channel();
         let animator = animator::spawn(rx, params);
         hook::set_options(options);
-        let hook = hook::HookThread::spawn(tx.clone())?;
-        Ok(Self { tx, hook, animator })
+        hook::connect(tx.clone());
+        let hook = hook::HookThread::spawn()?;
+        Ok(Self {
+            tx,
+            hook: Mutex::new(Some(hook)),
+            animator,
+        })
     }
 
-    /// Turns smoothing on or off. While off, wheel events pass through untouched.
+    /// Turns smoothing on or off. While off, wheel events pass through untouched
+    /// but the hook stays installed; see [`Smoother::suspend`] to remove it.
     pub fn set_enabled(&self, enabled: bool) {
         hook::ENABLED.store(enabled, Relaxed);
         if !enabled {
@@ -58,6 +68,32 @@ impl Smoother {
         hook::ENABLED.load(Relaxed)
     }
 
+    /// Removes the mouse hook entirely, so Glide no longer sees or injects any
+    /// input, until [`Smoother::resume`].
+    pub fn suspend(&self) {
+        let hook = self.hook.lock().unwrap_or_else(PoisonError::into_inner).take();
+        if let Some(hook) = hook {
+            hook.stop();
+        }
+        let _ = self.tx.send(Msg::Stop);
+    }
+
+    /// Reinstalls the mouse hook after [`Smoother::suspend`].
+    pub fn resume(&self) -> windows::core::Result<()> {
+        let mut hook = self.hook.lock().unwrap_or_else(PoisonError::into_inner);
+        if hook.is_none() {
+            *hook = Some(hook::HookThread::spawn()?);
+        }
+        Ok(())
+    }
+
+    pub fn is_suspended(&self) -> bool {
+        self.hook
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .is_none()
+    }
+
     pub fn set_params(&self, params: Params) {
         let _ = self.tx.send(Msg::SetParams(params));
     }
@@ -67,7 +103,7 @@ impl Smoother {
     }
 
     pub fn shutdown(self) {
-        self.hook.stop();
+        self.suspend();
         let _ = self.tx.send(Msg::Quit);
         let _ = self.animator.join();
     }

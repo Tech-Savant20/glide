@@ -43,12 +43,18 @@ pub(crate) struct HookThread {
     join: JoinHandle<()>,
 }
 
-impl HookThread {
-    pub(crate) fn spawn(tx: Sender<Msg>) -> windows::core::Result<Self> {
-        SENDER
-            .set(tx)
-            .expect("only one Smoother may run per process");
+/// Connects the hook callback to the animator. Must be called once, before the
+/// first [`HookThread::spawn`].
+pub(crate) fn connect(tx: Sender<Msg>) {
+    SENDER
+        .set(tx)
+        .expect("only one Smoother may run per process");
+}
 
+impl HookThread {
+    /// Installs the mouse hook on a new thread. Can be called again after
+    /// [`HookThread::stop`] to reinstall it.
+    pub(crate) fn spawn() -> windows::core::Result<Self> {
         let (ready_tx, ready_rx) = mpsc::channel();
         let join = thread::Builder::new()
             .name("glide-hook".into())
