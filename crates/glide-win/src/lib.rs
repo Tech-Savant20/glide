@@ -33,8 +33,8 @@ enum Msg {
         axis: Axis,
         notches: f64,
         time_ms: u32,
-        /// The app under the cursor when the notch happened.
-        app: u32,
+        /// The window under the cursor when the notch happened.
+        window: isize,
     },
     Stop,
     SetParams(Params),

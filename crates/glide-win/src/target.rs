@@ -24,7 +24,7 @@ use windows::Win32::System::Threading::{
 use windows::Win32::UI::WindowsAndMessaging::{
     GetAncestor, GetClassNameW, GetCursorInfo, GetWindowLongW, GetWindowRect,
     GetWindowThreadProcessId, IsZoomed, WindowFromPoint, CURSORINFO, CURSOR_SHOWING, GA_ROOT,
-    GWL_STYLE, WS_CAPTION,
+    GA_ROOTOWNER, GWL_STYLE, WS_CAPTION,
 };
 
 /// Why a window gets raw wheel events instead of smoothed ones.
@@ -72,19 +72,20 @@ thread_local! {
     static PROCESSES: RefCell<HashMap<u32, ProcessFacts>> = RefCell::new(HashMap::new());
 }
 
-/// The process that owns the window under `point` (0 if none). Used to tell when
-/// the cursor has moved onto another app. Comparing apps rather than windows
-/// means a tooltip or popup from the same app appearing under the cursor
-/// doesn't count as leaving it.
-pub(crate) fn app_at(point: POINT) -> u32 {
+/// The window under `point`, as a raw handle (0 if none), used to tell when the
+/// cursor has moved onto a different window. It's the top-level window at the
+/// root of the owner chain, so a tooltip, menu or dropdown belonging to the
+/// window being scrolled counts as that window, while a second window of the
+/// same app (another Chrome or File Explorer window) counts as different.
+pub(crate) fn window_at(point: POINT) -> isize {
     unsafe {
         let hwnd = WindowFromPoint(point);
         if hwnd.is_invalid() {
             return 0;
         }
-        let mut pid = 0;
-        GetWindowThreadProcessId(hwnd, Some(&mut pid));
-        pid
+        let owner = GetAncestor(hwnd, GA_ROOTOWNER);
+        let owner = if owner.is_invalid() { hwnd } else { owner };
+        owner.0 as isize
     }
 }
 

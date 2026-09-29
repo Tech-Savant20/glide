@@ -35,14 +35,14 @@ fn run(rx: Receiver<Msg>, params: Params) {
     let mut pacer = Pacer::new();
     let mut engine = Engine::new(params);
     let mut clock = EventClock::default();
-    // The app the current glide belongs to.
-    let mut app = 0u32;
+    // The window the current glide belongs to.
+    let mut window = 0isize;
 
     loop {
         if !engine.is_active() {
             // Idle: sleep until input arrives, costing no CPU.
             let Ok(msg) = rx.recv() else { return };
-            if !handle(msg, &mut engine, &mut clock, &mut app) {
+            if !handle(msg, &mut engine, &mut clock, &mut window) {
                 return;
             }
             if !engine.is_active() {
@@ -54,7 +54,7 @@ fn run(rx: Receiver<Msg>, params: Params) {
             inject::send_wheel(engine.tick(frame));
         }
         for msg in rx.try_iter() {
-            if !handle(msg, &mut engine, &mut clock, &mut app) {
+            if !handle(msg, &mut engine, &mut clock, &mut window) {
                 return;
             }
         }
@@ -63,9 +63,9 @@ fn run(rx: Receiver<Msg>, params: Params) {
         }
 
         let dt = pacer.next_frame();
-        // Moving the cursor onto another app ends the glide there, instead of
-        // letting the rest of it scroll whatever is now under the cursor.
-        if app != 0 && app_under_cursor().is_some_and(|a| a != app) {
+        // Moving the cursor onto another window ends the glide there, instead
+        // of letting the rest of it scroll whatever is now under the cursor.
+        if window != 0 && window_under_cursor().is_some_and(|w| w != window) {
             engine.stop();
             continue;
         }
@@ -146,15 +146,15 @@ fn wait_for_vblank() -> Option<u64> {
 }
 
 /// Applies one message. Returns false when the thread should exit.
-fn handle(msg: Msg, engine: &mut Engine, clock: &mut EventClock, app: &mut u32) -> bool {
+fn handle(msg: Msg, engine: &mut Engine, clock: &mut EventClock, window: &mut isize) -> bool {
     match msg {
         Msg::Wheel {
             axis,
             notches,
             time_ms,
-            app: target,
+            window: target,
         } => {
-            *app = target;
+            *window = target;
             engine.on_notch(axis, notches, clock.seconds(time_ms));
         }
         Msg::Stop => engine.stop(),
@@ -164,10 +164,10 @@ fn handle(msg: Msg, engine: &mut Engine, clock: &mut EventClock, app: &mut u32) 
     true
 }
 
-fn app_under_cursor() -> Option<u32> {
+fn window_under_cursor() -> Option<isize> {
     let mut point = POINT::default();
     unsafe { GetCursorPos(&mut point).ok()? };
-    Some(target::app_at(point))
+    Some(target::window_at(point))
 }
 
 /// Turns the 32-bit millisecond event timestamps (which wrap every 49.7 days) into
