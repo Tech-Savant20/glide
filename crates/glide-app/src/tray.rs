@@ -27,7 +27,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     RegisterWindowMessageW, SetForegroundWindow, TrackPopupMenu, TranslateMessage, HICON,
     MENU_ITEM_FLAGS, MF_CHECKED, MF_GRAYED, MF_SEPARATOR, MF_STRING, MSG, SM_CXSMICON,
     TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, WINDOW_EX_STYLE, WM_APP, WM_CONTEXTMENU,
-    WM_DESTROY, WM_HOTKEY, WM_NULL, WNDCLASSW, WS_OVERLAPPED,
+    WM_DESTROY, WM_HOTKEY, WM_NULL, WM_POWERBROADCAST, WNDCLASSW, WS_OVERLAPPED,
 };
 
 use crate::icon::{self, Look};
@@ -50,6 +50,10 @@ const NIN_KEYSELECT: u32 = NIN_SELECT | 0x1;
 const PAUSE_FOR: Duration = Duration::from_secs(60 * 60);
 /// How often to look for exam apps and anti-cheat games.
 const PAUSE_CHECK: Duration = Duration::from_secs(2);
+/// How often to check that Windows hasn't dropped the mouse hook.
+const HOOK_CHECK: Duration = Duration::from_secs(3);
+/// `PBT_APMRESUMEAUTOMATIC`: the PC woke from sleep or hibernation.
+const PBT_APMRESUMEAUTOMATIC: usize = 0x12;
 
 struct Ctx {
     shared: Arc<Shared>,
@@ -416,6 +420,18 @@ unsafe extern "system" fn wnd_proc(
             refresh(hwnd);
             LRESULT(0)
         }
+        WM_POWERBROADCAST if wparam.0 == PBT_APMRESUMEAUTOMATIC => {
+            // Hooks don't always survive sleep; put it back to be sure.
+            if let Some(shared) = with_ctx(|ctx| ctx.shared.clone()) {
+                if !shared.smoother.is_suspended() {
+                    match shared.smoother.reinstall() {
+                        Ok(()) => log!("Woke from sleep; mouse hook reinstalled."),
+                        Err(e) => log!("Woke from sleep; couldn't reinstall the mouse hook: {e}"),
+                    }
+                }
+            }
+            LRESULT(1)
+        }
         WM_HOTKEY => {
             if let Some(shared) = with_ctx(|ctx| ctx.shared.clone()) {
                 toggle(&shared);
@@ -455,6 +471,7 @@ fn spawn_watcher(shared: Arc<Shared>, hwnd: HWND) {
             let mut last_pause_check = Instant::now() - PAUSE_CHECK;
             let mut last_minute_tick = Instant::now();
             let mut last_skip = None;
+            let mut last_hook_check = Instant::now();
             loop {
                 let modified = config::modified(&path).ok();
                 if modified != seen {
@@ -526,6 +543,13 @@ fn spawn_watcher(shared: Arc<Shared>, hwnd: HWND) {
                         last_minute_tick = Instant::now();
                         drop(state);
                         post();
+                    }
+                }
+
+                if last_hook_check.elapsed() >= HOOK_CHECK {
+                    last_hook_check = Instant::now();
+                    if shared.smoother.check_hook() {
+                        log!("Windows dropped the mouse hook; reinstalled it.");
                     }
                 }
 

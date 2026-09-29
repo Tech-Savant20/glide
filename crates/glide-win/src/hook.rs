@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::Relaxed};
 use std::sync::mpsc::{self, Sender};
 use std::sync::OnceLock;
 use std::thread::{self, JoinHandle};
@@ -20,6 +20,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use crate::{target, Msg};
 
 pub(crate) static ENABLED: AtomicBool = AtomicBool::new(true);
+/// Every mouse event the hook has seen, including moves. The watchdog compares it
+/// with cursor movement to notice when Windows has dropped the hook.
+pub(crate) static EVENTS: AtomicU64 = AtomicU64::new(0);
 static NATURAL: AtomicBool = AtomicBool::new(false);
 static SMOOTH_HIRES: AtomicBool = AtomicBool::new(false);
 static SENDER: OnceLock<Sender<Msg>> = OnceLock::new();
@@ -107,6 +110,7 @@ fn run(ready: Sender<windows::core::Result<u32>>) {
 }
 
 unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    EVENTS.fetch_add(1, Relaxed);
     if code == HC_ACTION as i32 && ENABLED.load(Relaxed) {
         // SAFETY: for WH_MOUSE_LL with HC_ACTION, lparam points at an MSLLHOOKSTRUCT.
         let info = unsafe { &*(lparam.0 as *const MSLLHOOKSTRUCT) };

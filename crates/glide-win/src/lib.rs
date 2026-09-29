@@ -13,6 +13,7 @@ mod hook;
 mod inject;
 mod processes;
 mod target;
+mod watchdog;
 
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::mpsc::{self, Sender};
@@ -45,6 +46,7 @@ pub struct Smoother {
     /// `None` while suspended: the hook is fully removed, not just bypassed.
     hook: Mutex<Option<hook::HookThread>>,
     animator: JoinHandle<()>,
+    watchdog: Mutex<watchdog::Watchdog>,
 }
 
 impl Smoother {
@@ -58,6 +60,7 @@ impl Smoother {
             tx,
             hook: Mutex::new(Some(hook)),
             animator,
+            watchdog: Mutex::new(watchdog::Watchdog::default()),
         })
     }
 
@@ -95,6 +98,44 @@ impl Smoother {
             *hook = Some(hook::HookThread::spawn()?);
         }
         Ok(())
+    }
+
+    /// Removes and reinstalls the mouse hook, if it is installed. Useful after
+    /// the PC wakes from sleep, when Windows may have dropped it.
+    pub fn reinstall(&self) -> windows::core::Result<()> {
+        let mut hook = self.hook.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(old) = hook.take() {
+            old.stop();
+            *hook = Some(hook::HookThread::spawn()?);
+        }
+        self.lock_watchdog().reset();
+        Ok(())
+    }
+
+    /// Call every few seconds. Detects a hook that Windows removed without
+    /// telling us (the cursor keeps moving but the hook sees nothing) and
+    /// reinstalls it. Returns true when it did.
+    pub fn check_hook(&self) -> bool {
+        if self.is_suspended() {
+            self.lock_watchdog().reset();
+            return false;
+        }
+        let mut point = windows::Win32::Foundation::POINT::default();
+        if unsafe { windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut point) }.is_err() {
+            return false; // for example on the secure desktop
+        }
+        let sample = watchdog::Sample {
+            cursor: (point.x, point.y),
+            events: hook::EVENTS.load(Relaxed),
+        };
+        if !self.lock_watchdog().observe(sample) {
+            return false;
+        }
+        self.reinstall().is_ok()
+    }
+
+    fn lock_watchdog(&self) -> std::sync::MutexGuard<'_, watchdog::Watchdog> {
+        self.watchdog.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     pub fn is_suspended(&self) -> bool {
