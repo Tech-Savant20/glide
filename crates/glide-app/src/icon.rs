@@ -7,7 +7,7 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{CreateIconIndirect, HICON, ICONINFO};
 
-use crate::icon_art::icon_pixels;
+use glide_app::icon_art::icon_pixels;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Look {
@@ -51,7 +51,7 @@ pub fn create(size: u32, look: Look) -> windows::core::Result<HICON> {
 
 #[cfg(test)]
 mod tests {
-    use crate::icon_art::{icon_file, icon_pixels};
+    use glide_app::icon_art::{icon_file, icon_pixels};
 
     #[test]
     fn icon_has_transparent_corners_and_a_solid_middle() {

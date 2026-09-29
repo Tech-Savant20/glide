@@ -22,7 +22,7 @@ A normal mouse wheel on Windows jumps three lines per notch. Glide turns each no
   - common games
   - anything you add yourself
 - **Steps aside completely** while exam lockdown software (Safe Exam Browser, Respondus LockDown Browser, Examplify, Guardian Browser, Pearson OnVUE, Inspera) or games with anti-cheat (Riot Vanguard, Easy Anti-Cheat, BattlEye) are running. Glide removes its mouse hook and comes back when they close. Both can be turned off.
-- **Small:** a single exe that uses about 2 MB of memory in the background and needs no admin rights.
+- **Small:** the background program is a sub-megabyte exe using about 2 MB of memory; the settings window is a separate program that only runs while it's open. No admin rights needed.
 
 ## Install
 
@@ -38,7 +38,7 @@ Requires Windows 10 version 1903 or later, or Windows 11 (64-bit).
   - settings
   - start with Windows
   - quit
-- **Settings** (`glide.exe --settings`, or *Settings…* in the tray menu): changes apply as soon as you make them.
+- **Settings** (`glide-settings.exe`, the *Glide Settings* Start menu entry, or *Settings…* in the tray menu): changes apply as soon as you make them.
 - **Settings file:** `%APPDATA%\Glide\config.toml`. The settings window writes it, but you can also edit it by hand, and Glide reloads it when it's saved.
 - **Log:** `%LOCALAPPDATA%\Glide\glide.log`. Run `glide.exe --debug` from a terminal to see it live, including whether the window under the cursor is being smoothed.
 

@@ -163,6 +163,7 @@ fn classify(message: u32, info: &MSLLHOOKSTRUCT) -> Option<Msg> {
                 axis,
                 notches,
                 time_ms: info.time,
+                app: target::app_at(info.pt),
             })
         }
         WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN | WM_XBUTTONDOWN => Some(Msg::Stop),

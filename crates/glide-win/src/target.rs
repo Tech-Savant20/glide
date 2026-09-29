@@ -72,6 +72,22 @@ thread_local! {
     static PROCESSES: RefCell<HashMap<u32, ProcessFacts>> = RefCell::new(HashMap::new());
 }
 
+/// The process that owns the window under `point` (0 if none). Used to tell when
+/// the cursor has moved onto another app. Comparing apps rather than windows
+/// means a tooltip or popup from the same app appearing under the cursor
+/// doesn't count as leaving it.
+pub(crate) fn app_at(point: POINT) -> u32 {
+    unsafe {
+        let hwnd = WindowFromPoint(point);
+        if hwnd.is_invalid() {
+            return 0;
+        }
+        let mut pid = 0;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        pid
+    }
+}
+
 /// Returns why the window under `point` should get raw wheel events, or `None`
 /// to smooth it.
 pub(crate) fn skip_reason(point: POINT) -> Option<Skip> {

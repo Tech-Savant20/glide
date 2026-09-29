@@ -53,7 +53,8 @@ pub fn write(message: &str) {
     }
 }
 
+/// Writes a formatted line to the log, like `println!`.
+#[macro_export]
 macro_rules! log {
     ($($arg:tt)*) => { $crate::log::write(&format!($($arg)*)) };
 }
-pub(crate) use log;

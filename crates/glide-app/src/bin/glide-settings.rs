@@ -1,10 +1,12 @@
-//! The settings window, `glide --settings`.
+//! Glide's settings window, `glide-settings.exe`.
 //!
-//! It runs as its own process so the always-running tray part of Glide stays
-//! small, and it only talks to that part through the settings file: every
+//! It's its own program so the always-running `glide.exe` stays small, and it
+//! only talks to it through the settings file: every
 //! change is saved (after a short pause while you drag a slider) and the running
 //! Glide reloads it within a moment. That also makes the "Try it here" list a
 //! true preview, because the running Glide is what smooths it.
+
+#![windows_subsystem = "windows"]
 
 slint::include_modules!();
 
@@ -24,8 +26,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     FindWindowW, SetForegroundWindow, ShowWindow, SW_RESTORE, SW_SHOWNORMAL,
 };
 
-use crate::config::{self, Config, PresetName, Tuning};
-use crate::{apps, autostart, hotkey, log};
+use glide_app::config::{self, Config, PresetName, Tuning};
+use glide_app::{apps, autostart, hotkey, log};
+use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
 
 /// Settings are saved this long after the last change, so dragging a slider
 /// doesn't rewrite the file dozens of times a second.
@@ -47,7 +50,23 @@ struct Editor {
     running: Vec<String>,
 }
 
-pub fn run() -> Result<(), slint::PlatformError> {
+fn main() {
+    log::init();
+    if let Err(e) = run() {
+        let message = format!("Couldn't open Glide's settings: {e}");
+        log::write(&message);
+        unsafe {
+            MessageBoxW(
+                None,
+                &HSTRING::from(message),
+                w!("Glide"),
+                MB_OK | MB_ICONERROR,
+            );
+        }
+    }
+}
+
+fn run() -> Result<(), slint::PlatformError> {
     // One settings window at a time: bring the open one to the front instead.
     let _instance = unsafe { CreateMutexW(None, true, w!("Local\\Glide.Settings")) };
     if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {

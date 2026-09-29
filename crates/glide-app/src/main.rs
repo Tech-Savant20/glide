@@ -1,26 +1,19 @@
 //! Glide: Mac-style smooth scrolling for Windows.
 //!
-//! Runs in the background with a tray icon. `glide --settings` opens the settings
-//! window, and `glide --debug`, run from a terminal, also prints what it's doing there.
+//! Runs in the background with a tray icon. The settings window is a separate
+//! program, `glide-settings.exe`. `glide --debug`, run from a terminal, also
+//! prints what Glide is doing there.
 
 #![windows_subsystem = "windows"]
 
-mod apps;
-mod autostart;
-mod config;
-mod hotkey;
 mod icon;
-mod icon_art;
-mod log;
-mod pause;
-mod settings;
 mod tray;
 
 use std::sync::Mutex;
 use std::time::Instant;
 
+use glide_app::{apps, config, log};
 use glide_win::Smoother;
-use log::log;
 use windows::core::{w, HSTRING};
 use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
 use windows::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};
@@ -96,10 +89,12 @@ fn main() {
     }
     log::init();
 
-    // Display scaling (per-monitor DPI awareness) comes from the manifest that
-    // build.rs embeds.
+    // `glide --settings` still works: it opens the settings program.
     if std::env::args().any(|a| a == "--settings") {
-        if let Err(e) = settings::run() {
+        let args = std::env::args().skip_while(|a| a != "--settings").skip(1);
+        let spawned = glide_app::settings_exe()
+            .and_then(|exe| std::process::Command::new(exe).args(args).spawn());
+        if let Err(e) = spawned {
             fatal(&format!("couldn't open the settings window: {e}"));
         }
         return;

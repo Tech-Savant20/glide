@@ -2,7 +2,7 @@
 ; prompt, into %LOCALAPPDATA%\Programs\Glide.
 ;
 ; Build: ISCC.exe /DAppVersion=0.1.0 /DDistDir=..\dist installer\glide.iss
-; DistDir must contain glide.exe and glide.ico.
+; DistDir must contain glide.exe, glide-settings.exe and glide.ico.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0-dev"
@@ -47,12 +47,13 @@ Name: "startup"; Description: "Start Glide when I sign in to Windows"
 
 [Files]
 Source: "{#DistDir}\glide.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#DistDir}\glide-settings.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE-MIT"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE-APACHE"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\Glide"; Filename: "{app}\glide.exe"; Comment: "Smooth scrolling for your mouse wheel"
-Name: "{autoprograms}\Glide Settings"; Filename: "{app}\glide.exe"; Parameters: "--settings"; Comment: "Change how Glide scrolls"
+Name: "{autoprograms}\Glide Settings"; Filename: "{app}\glide-settings.exe"; Comment: "Change how Glide scrolls"
 
 [Registry]
 ; Same value the app's own "Start with Windows" switch writes.
@@ -64,7 +65,7 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 Filename: "{app}\glide.exe"; Description: "Start Glide now"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
-Filename: "{sys}\taskkill.exe"; Parameters: "/IM glide.exe /F"; Flags: runhidden; RunOnceId: "StopGlide"
+Filename: "{sys}\taskkill.exe"; Parameters: "/IM glide.exe /IM glide-settings.exe /F"; Flags: runhidden; RunOnceId: "StopGlide"
 
 [Code]
 // An upgrade has to replace glide.exe, so stop the running copy (tray and any
@@ -73,6 +74,6 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ResultCode: Integer;
 begin
-  Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM glide.exe /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM glide.exe /IM glide-settings.exe /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Result := '';
 end;

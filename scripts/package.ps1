@@ -26,7 +26,7 @@ $dist = Join-Path $root 'dist'
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
 New-Item -ItemType Directory $dist | Out-Null
 
-Copy-Item target\release\glide.exe $dist
+Copy-Item target\release\glide.exe, target\release\glide-settings.exe $dist
 # build.rs draws the icon into its OUT_DIR; take the newest one.
 $ico = Get-ChildItem target\release\build -Recurse -Filter glide.ico | Sort-Object LastWriteTime | Select-Object -Last 1
 if (-not $ico) { throw 'glide.ico not found; did build.rs run?' }
@@ -34,7 +34,7 @@ Copy-Item $ico.FullName $dist
 
 $portable = Join-Path $dist 'portable'
 New-Item -ItemType Directory $portable | Out-Null
-Copy-Item target\release\glide.exe, LICENSE-MIT, LICENSE-APACHE, README.md $portable
+Copy-Item target\release\glide.exe, target\release\glide-settings.exe, LICENSE-MIT, LICENSE-APACHE, README.md $portable
 # Antivirus often holds a freshly copied exe open for a moment; retry briefly.
 for ($try = 1; ; $try++) {
     try {

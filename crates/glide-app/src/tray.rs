@@ -31,8 +31,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::icon::{self, Look};
-use crate::log::log;
-use crate::{apps, autostart, config, hotkey, pause, Shared, State, Status};
+use crate::{Shared, State, Status};
+use glide_app::log;
+use glide_app::{apps, autostart, config, hotkey, pause};
 
 const WM_TRAY: u32 = WM_APP + 1;
 const WM_REFRESH: u32 = WM_APP + 2;
@@ -362,10 +363,10 @@ fn handle_command(hwnd: HWND, shared: &Shared, command: u32, last_app: Option<St
             }
         }
         ID_SETTINGS => {
-            // A separate process, so the tray part stays small; it opens its
+            // A separate program, so the tray part stays small; it opens its
             // window or brings an already open one to the front.
-            let spawned = std::env::current_exe()
-                .and_then(|exe| std::process::Command::new(exe).arg("--settings").spawn());
+            let spawned =
+                glide_app::settings_exe().and_then(|exe| std::process::Command::new(exe).spawn());
             if let Err(e) = spawned {
                 log!("Couldn't open the settings window: {e}");
             }

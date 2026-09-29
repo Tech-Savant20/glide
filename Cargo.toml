@@ -18,3 +18,8 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# Dependencies (mostly the settings window's UI toolkit) are optimized for size;
+# Glide's own crates, including the hook and scroll engine, stay at full speed.
+[profile.release.package."*"]
+opt-level = "z"

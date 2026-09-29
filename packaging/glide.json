@@ -12,7 +12,7 @@
     "bin": "glide.exe",
     "shortcuts": [
         ["glide.exe", "Glide"],
-        ["glide.exe", "Glide Settings", "--settings"]
+        ["glide-settings.exe", "Glide Settings"]
     ],
     "checkver": "github",
     "autoupdate": {

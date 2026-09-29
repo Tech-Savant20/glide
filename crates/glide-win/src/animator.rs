@@ -3,7 +3,7 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use glide_engine::{Engine, Params};
-use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND};
+use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, POINT};
 use windows::Win32::Graphics::Dwm::{DwmFlush, DwmGetCompositionTimingInfo, DWM_TIMING_INFO};
 use windows::Win32::Graphics::Gdi::{EnumDisplaySettingsW, DEVMODEW, ENUM_CURRENT_SETTINGS};
 use windows::Win32::System::Performance::QueryPerformanceFrequency;
@@ -13,7 +13,9 @@ use windows::Win32::System::Threading::{
     TIMER_ALL_ACCESS,
 };
 
-use crate::{inject, Msg};
+use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+
+use crate::{inject, target, Msg};
 
 /// Frames longer than this (a stall or a debugger pause) are clamped so motion
 /// does not jump.
@@ -33,12 +35,14 @@ fn run(rx: Receiver<Msg>, params: Params) {
     let mut pacer = Pacer::new();
     let mut engine = Engine::new(params);
     let mut clock = EventClock::default();
+    // The app the current glide belongs to.
+    let mut app = 0u32;
 
     loop {
         if !engine.is_active() {
             // Idle: sleep until input arrives, costing no CPU.
             let Ok(msg) = rx.recv() else { return };
-            if !handle(msg, &mut engine, &mut clock) {
+            if !handle(msg, &mut engine, &mut clock, &mut app) {
                 return;
             }
             if !engine.is_active() {
@@ -50,7 +54,7 @@ fn run(rx: Receiver<Msg>, params: Params) {
             inject::send_wheel(engine.tick(frame));
         }
         for msg in rx.try_iter() {
-            if !handle(msg, &mut engine, &mut clock) {
+            if !handle(msg, &mut engine, &mut clock, &mut app) {
                 return;
             }
         }
@@ -59,6 +63,12 @@ fn run(rx: Receiver<Msg>, params: Params) {
         }
 
         let dt = pacer.next_frame();
+        // Moving the cursor onto another app ends the glide there, instead of
+        // letting the rest of it scroll whatever is now under the cursor.
+        if app != 0 && app_under_cursor().is_some_and(|a| a != app) {
+            engine.stop();
+            continue;
+        }
         inject::send_wheel(engine.tick(dt));
     }
 }
@@ -136,18 +146,28 @@ fn wait_for_vblank() -> Option<u64> {
 }
 
 /// Applies one message. Returns false when the thread should exit.
-fn handle(msg: Msg, engine: &mut Engine, clock: &mut EventClock) -> bool {
+fn handle(msg: Msg, engine: &mut Engine, clock: &mut EventClock, app: &mut u32) -> bool {
     match msg {
         Msg::Wheel {
             axis,
             notches,
             time_ms,
-        } => engine.on_notch(axis, notches, clock.seconds(time_ms)),
+            app: target,
+        } => {
+            *app = target;
+            engine.on_notch(axis, notches, clock.seconds(time_ms));
+        }
         Msg::Stop => engine.stop(),
         Msg::SetParams(params) => engine.set_params(params),
         Msg::Quit => return false,
     }
     true
+}
+
+fn app_under_cursor() -> Option<u32> {
+    let mut point = POINT::default();
+    unsafe { GetCursorPos(&mut point).ok()? };
+    Some(target::app_at(point))
 }
 
 /// Turns the 32-bit millisecond event timestamps (which wrap every 49.7 days) into

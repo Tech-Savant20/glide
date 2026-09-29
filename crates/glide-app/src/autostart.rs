@@ -8,8 +8,9 @@ use windows::Win32::System::Registry::{
 const RUN_KEY: PCWSTR = w!(r"Software\Microsoft\Windows\CurrentVersion\Run");
 const VALUE: PCWSTR = w!("Glide");
 
+/// Always the tray program, even when the settings window changes the switch.
 fn command() -> Option<String> {
-    let exe = std::env::current_exe().ok()?;
+    let exe = std::env::current_exe().ok()?.with_file_name("glide.exe");
     Some(format!("\"{}\"", exe.display()))
 }
 
