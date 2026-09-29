@@ -16,7 +16,7 @@ jobs:
   release:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -48,7 +48,7 @@ jobs:
       # approves the project: sign dist/glide.exe before packaging and the
       # installer after. See https://signpath.org.
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: glide-${{ github.ref_name }}
           path: dist/
