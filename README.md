@@ -4,7 +4,7 @@ Mac-style smooth scrolling for Windows mouse wheels.
 
 A normal mouse wheel on Windows jumps three lines per notch. Glide turns each notch into smooth motion, the way scrolling feels on a Mac: it eases in and out, keeps a steady speed while you roll the wheel, and coasts after a quick flick.
 
-> **Status:** early development. There is no release yet.
+> **Status:** early (v0.1). It works well day to day, but expect rough edges, and please [report them](https://github.com/Tech-Savant20/glide/issues).
 
 ## Features
 
@@ -26,9 +26,18 @@ A normal mouse wheel on Windows jumps three lines per notch. Glide turns each no
 
 ## Install
 
-Releases will be published on the [Releases](https://github.com/Tech-Savant20/glide/releases) page, as a per-user installer and a portable zip, and later on winget and Scoop.
+Download the latest version from the [Releases](https://github.com/Tech-Savant20/glide/releases/latest) page:
+
+- **`Glide-<version>-setup.exe`**: installs for your user account only (no admin prompt), adds Start menu entries, and can start Glide when you sign in.
+- **`Glide-<version>-portable.zip`**: unzip anywhere and run `glide.exe`.
+
+Each release lists SHA-256 checksums in `SHA256SUMS.txt`.
+
+> **Windows may warn you the first time you run it** ("Windows protected your PC"). Releases aren't code-signed yet; that's in progress. Click **More info → Run anyway**, or check the file against `SHA256SUMS.txt` first. winget and Scoop packages will follow once releases are signed.
 
 Requires Windows 10 version 1903 or later, or Windows 11 (64-bit).
+
+After starting, Glide lives in the notification area next to the clock. Windows 11 may hide new icons behind the **^** arrow; drag it onto the taskbar to keep it visible.
 
 ## Using Glide
 
