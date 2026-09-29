@@ -59,6 +59,16 @@ Chromium browsers add their own smooth-scrolling animation to every wheel event,
 
 Glide collects nothing. It has no telemetry and no analytics, and it makes no network requests. It reads wheel events only to replay them smoothly, and it never records or sends them anywhere.
 
+## Code signing policy
+
+Free code signing for Windows releases is provided by [SignPath.io](https://about.signpath.io), with a certificate from the [SignPath Foundation](https://signpath.org). *(Application in progress; releases up to v0.1.0 are unsigned.)*
+
+- **Committers and reviewers:** [Tech-Savant20](https://github.com/Tech-Savant20)
+- **Approvers:** [Tech-Savant20](https://github.com/Tech-Savant20)
+
+Only files built by this repository's GitHub Actions release workflow, from source in this repository, are signed. Each signing request is approved manually.
+
+Privacy: this program does not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. See [Privacy](#privacy).
 ## How it compares
 
 "Ripple" is how much the scroll speed wobbles while you roll the wheel at a steady pace (standard deviation over mean); lower is smoother. These figures come from Glide's own benchmark, which also re-implements the models other tools use (details in [docs/research/prior-art.md](docs/research/prior-art.md)):
